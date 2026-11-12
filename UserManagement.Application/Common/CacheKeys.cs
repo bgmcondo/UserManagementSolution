@@ -8,17 +8,15 @@
         /// RemoveByPrefixAsync(CacheKeys.UserListPrefix) ile tüm listeler birden temizlenir.
         /// </summary>
         
-        public const string  UserListPrefix= "users:list:";
+        public const string  UserListPrefix= "users:list:"; //constlar otomatik static
 
-        /// <summary>
-        /// Tek bir kullanıcının cache anahtarını üretir.
-        /// </summary>
-        /// <param name="id">Kullanıcının Id değeri.</param>
+    
+         /// tek bir Kullanıcının Id değeri
         /// <returns>Örnek: "users:42"</returns>
-        public static string User(int id) => $"users:{id}";
+       public static string User(Guid id) => $"users:{id}";
 
-        ///<summary>
-        ///
-        /// </summary>
+        //bütün kullanıcılar
+        public const string AllUsers = UserListPrefix + "all";
+
     }
 }

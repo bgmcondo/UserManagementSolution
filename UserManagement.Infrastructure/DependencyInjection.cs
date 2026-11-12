@@ -1,60 +1,72 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using UserManagement.Domain.Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using UserManagement.Infrastructure.Persistence;
+using UserManagement.Application.Interfaces;
+using UserManagement.Application.Options;
+using UserManagement.Domain.Entities;
 using UserManagement.Infrastructure.Caching;
+using UserManagement.Infrastructure.Persistence;
+using UserManagement.Infrastructure.Repositories;
 using UserManagement.Infrastructure.Security;
-using UserManagement.Infrastructure.Seeding;
-using UserManagement.Application.Abstractions;
-using UserManagement.Application.Validators;   // ⚠ PasswordRules'un namespace'i neyse
-
-
 
 namespace UserManagement.Infrastructure
 {
-    // Infrastructure katmanının DI kayıtları burada
+    // Infrastructure katmanının DI kayıtları burada.
+    // Program.cs'te builder.Services.AddInfrastructure(builder.Configuration) ile çağrılır.
+    //
+    // configuration: Program.cs'teki builder.Configuration'dan gelir.
+    // .NET ayarları şu kaynaklardan okuyup birleştirir (aynı ayar birden fazla yerdeyse alttaki kazanır):
+    //   1. appsettings.json
+    //   2. appsettings.Development.json  (Development ortamındaysa)
+    //   3. User Secrets                   (Development ortamındaysa)
+    //   4. Environment variable'lar
+    //   5. Komut satırı argümanları
     public static class DependencyInjection
     {
-        // configuration: Program.cs'teki builder.Configuration'dan gelir.
-        // WebApplication.CreateBuilder(args) çalışınca .NET ayarları otomatik olarak
-        // şu kaynaklardan okuyup tek bir nesnede birleştirir:
-        //   1. appsettings.json
-        //   2. appsettings.Development.json  (Development ortamındaysa)
-        //   3. User Secrets                   (Development ortamındaysa)
-        //   4. Environment variable'lar
-        //   5. Komut satırı argümanları
-        // Aynı ayar birden fazla yerde varsa listede alttaki kazanır.
         public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
         {
-            //veritabanı bağlantısı
+            // ---------- Ayarlar ----------
+            // "PasswordPolicy" bölümünü oku. Bölüm yoksa sınıftaki varsayılanlar kullanılır.
+            var passwordSection = configuration.GetSection(PasswordPolicyOptions.SectionName);
+            var passwordPolicy = passwordSection.Get<PasswordPolicyOptions>() ?? new PasswordPolicyOptions();
+
+            // Validator'lar IOptions<PasswordPolicyOptions> ile okuyabilsin diye kaydet
+            services.Configure<PasswordPolicyOptions>(passwordSection);
+
+            // ---------- Veritabanı ----------
             services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
-            //identity 
-            //UserManager<AppUser> ve RoleManager<IdentityRole<Guid>> bu kayıt sayesinde kullanılabilir  
-            services.AddIdentityCore<AppUser>(options=>
+                options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
+
+            // ---------- Identity ----------
+            // UserManager<AppUser> ve RoleManager<IdentityRole<Guid>> bu kayıt sayesinde kullanılabilir.
+            services.AddIdentityCore<AppUser>(options =>
             {
-                // Şifre kuralları (appsettings'teki şifreler bunlara uymalı)
-                options.Password.RequiredLength =PasswordRules.
-                options.Password.RequireDigit = true;
-                options.Password.RequireUppercase = true;
-                options.Password.RequireLowercase = true;
-                options.Password.RequireNonAlphanumeric = true;
+                // Parola kuralları: validator'larla aynı kaynaktan (PasswordPolicyOptions)
+                options.Password.RequiredLength = passwordPolicy.MinLength;
+                options.Password.RequireDigit = passwordPolicy.RequireDigit;
+                options.Password.RequireUppercase = passwordPolicy.RequireUppercase;
+                options.Password.RequireLowercase = passwordPolicy.RequireLowercase;
+                options.Password.RequireNonAlphanumeric = passwordPolicy.RequireNonAlphanumeric;
 
                 // Aynı e-postayla iki kullanıcı olmasın
                 options.User.RequireUniqueEmail = true;
+            })
+                .AddRoles<IdentityRole<Guid>>()               // RoleManager + AddToRoleAsync için
+                .AddEntityFrameworkStores<AppDbContext>();    // kullanıcı ve rolleri bu DbContext'e kaydet
 
+            // ---------- Repository ----------
+            services.AddScoped<IUserRepository, UserRepository>();
 
-            }
-                
-                
-                )
+            // ---------- Güvenlik ----------
+            services.AddScoped<IJwtTokenService, JwtTokenService>();
+
+            // ---------- Cache (Redis) ----------
+            services.AddStackExchangeRedisCache(options =>
+                options.Configuration = configuration.GetConnectionString("Redis"));
+            services.AddScoped<ICacheService, RedisCacheService>();
+
+            return services;
         }
-
-
-
-
-
     }
 }

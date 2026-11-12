@@ -21,9 +21,4 @@
     <ProjectReference Include="..\UserManagement.Infrastructure\UserManagement.Infrastructure.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Middleware\" />
-    <Folder Include="Notifications\" />
-  </ItemGroup>
-
 </Project>

@@ -1,5 +1,7 @@
 ﻿using FluentValidation;
+using Microsoft.Extensions.Options;
 using UserManagement.Application.DTOs;
+using UserManagement.Application.Options;
 
 namespace UserManagement.Application.Validators
 {
@@ -11,18 +13,22 @@ namespace UserManagement.Application.Validators
     // kafa karıştırıcı bir hata görür.
     public class CreateUserRequestDtoValidator : AbstractValidator<CreateUserRequestDto>
     {
-      
-            public CreateUserRequestDtoValidator() {
+
+        public CreateUserRequestDtoValidator(IOptions<PasswordPolicyOptions> passwordPolicy)
+        {
             //Kullanıcı adında "@" olamaz. Böylece kullanıcı adı ile e-posta hiçbir zaman karışmaz.
             // Kullanıcı adı kuralları UserNameRules'ta tanımlı (ChangeUserNameRequestDtoValidator ile ortak).
             RuleFor(x => x.UserName).ValidUserName();
+            RuleFor(x => x.FullName)
+    .NotEmpty().WithMessage("Ad soyad boş olamaz.")
+    .MaximumLength(100).WithMessage("Ad soyad en fazla 100 karakter olabilir.");
 
             RuleFor(x => x.Email)
                 .NotEmpty().WithMessage("E-posta boş olamaz.")
                 .EmailAddress().WithMessage("Geçerli bir e-posta adresi girilmelidir.");
 
-            RuleFor(x => x.Password).ValidPassword();
-             
+            RuleFor(x => x.Password).ValidPassword(passwordPolicy.Value);
+
 
             RuleFor(x => x.PhoneNumber).MaximumLength(30).WithMessage("Telefon numarası en fazla 30 karakter olabilir.");
             RuleFor(x => x.Website).MaximumLength(200).WithMessage("Web sitesi en fazla 200 karakter olabilir.");

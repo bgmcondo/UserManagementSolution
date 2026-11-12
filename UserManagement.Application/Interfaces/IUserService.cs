@@ -33,20 +33,20 @@ namespace UserManagement.Application.Interfaces
         //PUT /api/users/{id} Admin id URL'den
         //PUT /api/users/me kullanıcının kendisi,id token'dan
         //Bulunamazsa false döner
-        Task<bool> UpdateAsync(Guid id, UpdateUserRequestDto request, CancellationToken ct);
+        Task <UserResponseDto> UpdateAsync(Guid id, UpdateUserRequestDto request, CancellationToken ct);
 
         // Kullanıcıyı siler (Admin). Bulunamazsa false döner.
-        Task<bool> DeleteAsync(Guid id, CancellationToken ct);
+        Task DeleteAsync(Guid id, CancellationToken ct);
 
         // Kullanıcının kendi kullanıcı adını değiştirir. userId token'dan gelir, istemciden değil.
         // Mevcut parola yanlışsa veya yeni ad başkasındaysa ValidationException fırlatır.
         // Başarılıysa cache temizlenir ve Admin'lere SignalR bildirimi gider.
-        Task<bool> ChangeUserNameAsync(Guid userId, ChangeUserNameRequestDto request, CancellationToken ct);
+        Task  ChangeUserNameAsync(Guid userId, ChangeUserNameRequestDto request, CancellationToken ct);
 
         // Kullanıcının kendi parolasını değiştirir. userId token'dan gelir.
         // Mevcut parola yanlışsa ValidationException fırlatır.
         // Cache temizliği ve bildirim yok: parola cache'te bulunmuyor, Admin'in bilmesi de gerekmiyor.
-        Task<bool> ChangePasswordAsync(Guid userId, ChangePasswordRequestDto request, CancellationToken ct);
+        Task ChangePasswordAsync(Guid userId, ChangePasswordRequestDto request, CancellationToken ct);
 
 
 

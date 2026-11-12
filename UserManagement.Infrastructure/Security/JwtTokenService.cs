@@ -2,13 +2,11 @@
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
-using Org.BouncyCastle.Pqc.Crypto.Crystals.Dilithium;
-using System;
-using System.Collections.Generic;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using UserManagement.Application.Abstractions;
+using UserManagement.Application.DTOs;
+using UserManagement.Application.Interfaces;
 
 namespace UserManagement.Infrastructure.Security
 {
@@ -25,7 +23,7 @@ namespace UserManagement.Infrastructure.Security
             _options = options.Value;
             
         }
-        public string GenerateAccessToken(Guid userId, string email, IEnumerable<string> roles)
+        public AccessTokenResult GenerateAccessToken(Guid userId, string email, IEnumerable<string> roles)
         {
             //claimler token içine yazılması gereken bilgiler
             var claims = new List<Claim>
@@ -47,6 +45,7 @@ namespace UserManagement.Infrastructure.Security
             var credentials=new SigningCredentials(key,SecurityAlgorithms.HmacSha256);
             //token tarifi 
             var now=DateTime.UtcNow;
+            var expiresAt = now.AddMinutes(_options.AccessTokenExpirationMinutes);
 
             var descriptor = new SecurityTokenDescriptor
             {
@@ -66,7 +65,7 @@ namespace UserManagement.Infrastructure.Security
                 NotBefore=now,
 
                 //Token ne zaman geçersiz olacak(örn 60dk sonra)
-                Expires = now.AddMinutes(_options.AccessTokenExpirationMinutes),
+                Expires=expiresAt,
 
                 // Token hangi anahtar ve algoritmayla imzalanacak (3. adımda hazırlamıştık)
                 SigningCredentials = credentials
@@ -75,8 +74,8 @@ namespace UserManagement.Infrastructure.Security
 
             //token'ı tarife göre oluştur ve string olarak döndür
             var handler= new JsonWebTokenHandler();
-            return handler.CreateToken(descriptor);
-
+            var token=handler.CreateToken(descriptor);
+            return new AccessTokenResult(token, expiresAt);
         }
         //Access token yenilemede kullanılacak refresh token'ı üretir
         public string GenerateRefreshToken()

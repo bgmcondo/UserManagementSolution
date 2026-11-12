@@ -1,8 +1,9 @@
 ﻿using Microsoft.Extensions.Caching.Distributed;
 using StackExchange.Redis;
 using System.Text.Json;
+using UserManagement.Application.Interfaces;
 
-public class RedisCacheService
+public class RedisCacheService:ICacheService
 {
     //Sabitler + alanlar + constructor(InstanceName, DefaultExpiration, JsonOptions, _cache, _redis)
 
@@ -52,13 +53,9 @@ public class RedisCacheService
 
     }
     //GetAsync → SetAsync'in tersi
-    public async Task<T?> GetTaskAsync<T>(string key, T value, TimeSpan? absolute_Expiration = null, TimeSpan? slidingExpiration = null, CancellationToken cancellationToken = default)
+    public async Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
     {
-        var cacheOptions = new DistributedCacheEntryOptions
-        {
-            AbsoluteExpirationRelativeToNow = absolute_Expiration ?? DefaultExpiration,
-            SlidingExpiration = slidingExpiration
-        };
+      
         //redisten json metnini oku önek otamatik olarak eklenir
         var json = await _cache.GetStringAsync(key, cancellationToken);
         //kayıt yoksa veya süresi dolmuşsa null gelir
@@ -71,7 +68,7 @@ public class RedisCacheService
 
     }
     //RemoveAsync → tek satır
-    public async Task RemoveAsync(string key, TimeSpan? absolute_Expiration = null, TimeSpan? slidingExpiration = null, CancellationToken cancellationToken = default)
+    public async Task RemoveAsync(string key,  CancellationToken cancellationToken = default)
     {
         await _cache.RemoveAsync(key, cancellationToken);
 
@@ -81,9 +78,11 @@ public class RedisCacheService
     //GetOrSetAsync → GetAsync + factory + SetAsync birleşimi
     public async Task<T?> GetOrSetAsync<T>(string key, Func<Task<T>> factory, TimeSpan? absolute_Expiration = null, TimeSpan? slidingExpiration = null, CancellationToken cancellationToken = default)
     {
-        var json = await _cache.GetStringAsync(key, cancellationToken);
+        // json'u okur ve nesne olarak alır.
+        var cached = await GetAsync<T>(key, cancellationToken);
 
-        if (json == null) { return default; }
+        if (cached is not null)
+            return cached;
         // Redis'te yok: factory'yi çalıştır (genelde veritabanı sorgusu).
         var value = await factory();
 
@@ -101,11 +100,11 @@ public class RedisCacheService
 
     }
     //ExistsAsync → ilk kez _redis, önek elle eklenir
-    public Task<bool> ExistsAsync(string key, TimeSpan? ablsolute_Expiration = null, TimeSpan? slidingExpiration = null, CancellationToken cancellationToken = default)
+    public async Task<bool> ExistsAsync(string key, CancellationToken cancellationToken = default)
     {
         var db = _redis.GetDatabase(); //Redise komut göndermek için
         var redisKey = InstanceName + key;
-        return db.KeyExistsAsync(redisKey);
+        return await db.KeyExistsAsync(redisKey);
 
     }
     //RemoveByPrefixAsync → _redis + sunucuları dolaşma + SCAN peki bunları yazarken hangi dokümandan yararlanayım?
@@ -144,4 +143,5 @@ public class RedisCacheService
         }
     }
 
+   
 }
