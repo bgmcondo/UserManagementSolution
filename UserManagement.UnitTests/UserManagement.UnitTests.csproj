@@ -9,11 +9,20 @@
   <ItemGroup>
     <PackageReference Include="FluentAssertions" Version="8.11.0" />
     <PackageReference Include="Moq" Version="4.21.0" />
+    <PackageReference Include="xunit.extensibility.core" Version="2.9.3" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\UserManagement.API\UserManagement.API.csproj" />
     <ProjectReference Include="..\UserManagement.Application\UserManagement.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="API\Middleware\" />
+    <Folder Include="Application\Validators\" />
+    <Folder Include="Infrastructure\Messaging\" />
+    <Folder Include="Infrastructure\Caching\" />
+    <Folder Include="Infrastructure\Security\" />
   </ItemGroup>
 
 </Project>

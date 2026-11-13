@@ -29,16 +29,19 @@ namespace UserManagement.Application.Services
         private readonly ICacheService _cache;
         private readonly IValidationService _validationService;
 
+        private readonly INotificationService _notificationService;
 
 
 
-        public UserService(IUserRepository userRepository, ICacheService cacheService,IValidationService validationService )                       // ← mevcutlar aynen kalsın
-        
+
+        public UserService(IUserRepository userRepository, ICacheService cacheService, IValidationService validationService, INotificationService notificationService)                       // ← mevcutlar aynen kalsın
+
         {
             _userRepository = userRepository;
             _cache = cacheService;
             _validationService = validationService;
-           
+            _notificationService = notificationService;
+
         }
 
 
@@ -68,7 +71,7 @@ namespace UserManagement.Application.Services
         public async Task<UserResponseDto> CreateAsync(CreateUserRequestDto createUserRequestDto, CancellationToken ct)
         {
             // Kurallara uymuyorsa ValidationException fırlatır, aşağısı HİÇ çalışmaz → middleware 400 döner
-            await _validationService.ValidateAsync(createUserRequestDto, ct);   
+            await _validationService.ValidateAsync(createUserRequestDto, ct);
             var existingUser = await _userRepository.GetByEmailAsync(createUserRequestDto.Email, ct);
             if (existingUser is not null)
                 throw new ConflictException("Bu e-postaya sahip kullanıcı zaten var.");
@@ -89,18 +92,20 @@ namespace UserManagement.Application.Services
             ThrowIfFailed(result, "Kullanıcı oluşturulamadı");
             // Liste cache'leri artık eksik, hepsini temizliyoruz
             await _cache.RemoveByPrefixAsync(CacheKeys.UserListPrefix, ct);
+            var response = user.ToResponseDto();
+            await _notificationService.NotifyUserCreatedAsync(response, ct);
+            return response;
 
-            return user.ToResponseDto();
         }
 
         public async Task<UserResponseDto> UpdateAsync(Guid id, UpdateUserRequestDto updateUserRequestDto, CancellationToken ct)
         {
-            await _validationService.ValidateAsync(updateUserRequestDto,ct);
+            await _validationService.ValidateAsync(updateUserRequestDto, ct);
             var user = await GetUserOrThrowAsync(id, ct);
 
             // Önce değerleri entity'ye aktar, sonra kaydet
             user.FullName = updateUserRequestDto.FullName;
-            user.PhoneNumber =updateUserRequestDto.PhoneNumber;
+            user.PhoneNumber = updateUserRequestDto.PhoneNumber;
             user.Website = updateUserRequestDto.Website;
             user.Address = updateUserRequestDto.Address?.ToEntity();
             user.Company = updateUserRequestDto.Company?.ToEntity();
@@ -133,10 +138,21 @@ namespace UserManagement.Application.Services
             if (!await _userRepository.CheckPasswordAsync(user, changeUserNameRequestDto.CurrentPassword, ct))
                 throw new ValidationException("Mevcut parola yanlış.");
 
+            // Değiştirmeden ÖNCE saklıyoruz çünkü notification da eski kullanıcı adının ne olduğuda önemli
+            var oldUserName = user.UserName;
+
             var result = await _userRepository.SetUserNameAsync(user, changeUserNameRequestDto.NewUserName, ct);
             ThrowIfFailed(result, "Kullanıcı adı değiştirilemedi");
             // UserName DTO'da görünüyor: tek kaydı ve listeleri temizler
-           await InvalidateUserCacheAsync(userId, ct);
+            await InvalidateUserCacheAsync(userId, ct);
+            // Değişiklik kaydedildi → kullanıcıya ve adminlere haber ver
+            await _notificationService.NotifyUserNameChangedAsync(
+                new UserNameChangedDto
+                (
+                      userId,
+                      oldUserName ?? String.Empty,
+                      changeUserNameRequestDto.NewUserName,
+                      DateTime.UtcNow), ct);
         }
 
         public async Task ChangePasswordAsync(Guid userId, ChangePasswordRequestDto changePasswordRequestDto, CancellationToken ct)

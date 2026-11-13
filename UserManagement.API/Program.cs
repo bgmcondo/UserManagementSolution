@@ -1,7 +1,10 @@
-using System.Runtime.ExceptionServices;
+
+using UserManagement.API.Extensions;
 using UserManagement.API.Hubs;
 using UserManagement.API.Middleware;
+using UserManagement.API.Notifications;
 using UserManagement.Application;
+using UserManagement.Application.Interfaces;
 using UserManagement.Infrastructure;
 
 // =====================================================================
@@ -30,6 +33,7 @@ builder.Services.AddControllers();
 // SignalR'ı (gerçek zamanlı bildirim / WebSocket) etkinleştirir.
 // Hubs klasöründeki NotificationHub bunun sayesinde çalışır.
 builder.Services.AddSignalR();
+builder.Services.AddSingleton<INotificationService, SignalRNotificationService>();
 
 // Swagger'ın endpoint'leri keşfedebilmesi için gerekli.
 builder.Services.AddEndpointsApiExplorer();
@@ -45,6 +49,9 @@ builder.Services.AddCors(o => o.AddPolicy("client", p => p
     .AllowCredentials()));                // Cookie/token gönderimine izin ver. SignalR için ŞART.
                                           // Not: AllowCredentials ile AllowAnyOrigin birlikte KULLANILAMAZ,
                                           // bu yüzden adresi açıkça yazıyoruz.
+
+ //JWT doğrulamayı kaydet
+builder.Services.AddJWTAuthentication(builder.Configuration);
 
 var app = builder.Build(); // bu satırdan sonra servis eklenmez
 //app.Use() ile başlayan her satır middleware
