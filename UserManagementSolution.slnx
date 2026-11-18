@@ -1,4 +1,10 @@
 <Solution>
+  <Folder Name="/Çözüm Öğeleri/">
+    <File Path=".env" />
+  </Folder>
+  <Project Path="docker-compose.dcproj">
+    <Build />
+  </Project>
   <Project Path="UserManagement.API/UserManagement.API.csproj" />
   <Project Path="UserManagement.Application/UserManagement.Application.csproj" />
   <Project Path="UserManagement.Infrastructure/UserManagement.Infrastructure.csproj" />

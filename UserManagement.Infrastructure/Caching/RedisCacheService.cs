@@ -76,7 +76,7 @@ public class RedisCacheService:ICacheService
     }
 
     //GetOrSetAsync → GetAsync + factory + SetAsync birleşimi
-    public async Task<T?> GetOrSetAsync<T>(string key, Func<Task<T>> factory, TimeSpan? absolute_Expiration = null, TimeSpan? slidingExpiration = null, CancellationToken cancellationToken = default)
+    public async Task<T> GetOrSetAsync<T>(string key, Func<Task<T>> factory, TimeSpan? absolute_Expiration = null, TimeSpan? slidingExpiration = null, CancellationToken cancellationToken = default)
     {
         // json'u okur ve nesne olarak alır.
         var cached = await GetAsync<T>(key, cancellationToken);

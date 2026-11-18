@@ -47,9 +47,14 @@ public class ExceptionHandlingMiddleware
         // Hata türüne göre uygun HTTP durum kodunu seç
         var statusCode = exception switch
         {
+            ValidationException=>HttpStatusCode.BadRequest,//  400: Geçersiz veri / yanlış mevcut parola
             KeyNotFoundException => HttpStatusCode.NotFound,            // 404: Kayıt bulunamadı
             ArgumentException => HttpStatusCode.BadRequest,          // 400: Hatalı veri
-            UnauthorizedAccessException => HttpStatusCode.Unauthorized,        // 401: Yetkisiz
+            ForbiddenException=>HttpStatusCode.Forbidden, // yetki yok
+            UnauthorizedException => HttpStatusCode.Unauthorized,        // 401: Yetkisiz
+            ConflictException=>HttpStatusCode.Conflict, //  409: Aynı e - posta / kullanıcı adı
+
+
             _ => HttpStatusCode.InternalServerError  // 500: Diğer tüm hatalar
         };
 
@@ -61,11 +66,19 @@ public class ExceptionHandlingMiddleware
             ? "Sunucuda bir hata oluştu."
             : exception.Message;
 
+        //  Doğrulama hatalarında hangi alanın neden hatalı olduğunu da gönder
+        // Örn: "errors": { "Email": ["Geçerli bir e-posta adresi girilmelidir."] }
+        // Diğer hatalarda null döner.
+        var errors = exception is ValidationException ve && ve.Errors.Count > 0
+            ? ve.Errors
+            : null;
+
         // Frontend'e düzenli bir JSON döndür
         await context.Response.WriteAsJsonAsync(new
         {
             statusCode = (int)statusCode,
-            message
+            message,
+            errors
         });
     }
 }

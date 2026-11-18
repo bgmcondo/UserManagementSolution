@@ -1,7 +1,10 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using MassTransit.Configuration;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using StackExchange.Redis;
 using UserManagement.Application.Interfaces;
 using UserManagement.Application.Options;
 using UserManagement.Domain.Entities;
@@ -9,6 +12,7 @@ using UserManagement.Infrastructure.Caching;
 using UserManagement.Infrastructure.Persistence;
 using UserManagement.Infrastructure.Repositories;
 using UserManagement.Infrastructure.Security;
+using UserManagement.Infrastructure.Seeding;
 
 namespace UserManagement.Infrastructure
 {
@@ -24,6 +28,7 @@ namespace UserManagement.Infrastructure
     //   5. Komut satırı argümanları
     public static class DependencyInjection
     {
+
         public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
         {
             // ---------- Ayarlar ----------
@@ -59,11 +64,48 @@ namespace UserManagement.Infrastructure
             services.AddScoped<IUserRepository, UserRepository>();
 
             // ---------- Güvenlik ----------
+            //jwt bölümünü jwt options ile bağlıyoruz
+            //Jwt token service IOptions ile JwtOptions okuyor
+            services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
             services.AddScoped<IJwtTokenService, JwtTokenService>();
 
             // ---------- Cache (Redis) ----------
+            //Redis Connection'ı ekliyoruz
+            var redisConnection = configuration.GetConnectionString("Redis") ?? throw new InvalidOperationException("Redis bağlantısı bulunamadı");
+            // RedisCacheService'in RemoveByPrefixAsync / ExistsAsync için doğrudan Redis bağlantısı.
+            // Singleton: bağlantı pahalıdır, uygulama boyunca tek bir tane kullanılır.
+            services.AddSingleton<IConnectionMultiplexer>(_ => {
+
+                var options = ConfigurationOptions.Parse(redisConnection);
+
+                options.AbortOnConnectFail = false;
+
+                return ConnectionMultiplexer.Connect(options);
+            }
+                );
+
+            // IDistributedCache (Get/Set/Remove için)
+           // yani bellekteki bilgi güncelleme ekleme silme vb şeyleri sağlayan hizmetin kodunun kaydı
             services.AddStackExchangeRedisCache(options =>
-                options.Configuration = configuration.GetConnectionString("Redis"));
+            {
+                options.Configuration = redisConnection;
+                options.InstanceName = RedisCacheService.InstanceName;
+
+
+
+            }
+                );
+
+
+            //Seed bölümünü seed options'a bağlıyoruz
+            services.Configure<SeedOptions>(configuration.GetSection(SeedOptions.SectionName));
+
+            // DataSeeder dış API'ye (jsonplaceholder) istek attığı için HttpClient ile kaydediliyor
+            services.AddHttpClient<DataSeeder>();
+
+
+
+
             services.AddScoped<ICacheService, RedisCacheService>();
 
             return services;

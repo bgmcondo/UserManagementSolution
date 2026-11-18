@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
-using System.Data.Entity.Core.Mapping;
 using System.Text;
 using UserManagement.Infrastructure.Security;
 

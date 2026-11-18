@@ -1,4 +1,5 @@
 
+using Microsoft.EntityFrameworkCore;
 using UserManagement.API.Extensions;
 using UserManagement.API.Hubs;
 using UserManagement.API.Middleware;
@@ -6,6 +7,8 @@ using UserManagement.API.Notifications;
 using UserManagement.Application;
 using UserManagement.Application.Interfaces;
 using UserManagement.Infrastructure;
+using UserManagement.Infrastructure.Persistence;
+using UserManagement.Infrastructure.Seeding;
 
 // =====================================================================
 // İstek → Middleware'ler → Controller → Servis → Veritabanı
@@ -55,6 +58,22 @@ builder.Services.AddJWTAuthentication(builder.Configuration);
 
 var app = builder.Build(); // bu satırdan sonra servis eklenmez
 //app.Use() ile başlayan her satır middleware
+
+// Uygulama açılırken rolleri, adminleri ve örnek kullanıcıları veritabanına ekle.
+// AddInfrastructure DataSeeder'ı sadece KAYDETTİ; burada onu oluşturup ÇALIŞTIRIYORUZ.
+
+// Diğer servislerde buna gerek yok: istek gelince ASP.NET controller'ı oluşturur,
+// controller'ın istediği servisleri de DI zincirleme olarak oluşturur.
+// DataSeeder'ı ise hiçbir controller/servis istemediği için burada elle oluşturup çalıştırıyoruz.
+using (var scope = app.Services.CreateScope())
+{
+    // Docker'daki SQL Server boş başlar: veritabanı/tablo yoksa oluşturur, eksik migration'ları uygular (Update-Database'in otomatiği).
+    // Seeder'dan ÖNCE çalışmalı; DB zaten güncelse hiçbir şey yapmaz.
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.MigrateAsync();
+    var seeder = scope.ServiceProvider.GetRequiredService<DataSeeder>();
+    await seeder.SeedAsync();
+}
 
 // Hata yakalayıcı en başta olmaöı ki alttaki herşeyin hatasını yakalayabilsin
 app.UseMiddleware<ExceptionHandlingMiddleware>();

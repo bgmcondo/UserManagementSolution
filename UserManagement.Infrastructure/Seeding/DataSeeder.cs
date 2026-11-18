@@ -112,33 +112,40 @@ namespace UserManagement.Infrastructure.Seeding
 
         private async Task SeedAdminAsync()
         {
-            //Bu epostayla kullanıcı zaten varsa tekrardan oluşturma 
-            //FindByEmailAsync: Kullanıcıyı bulursa döndürür, bulamazsa null döner.
-            if (await _userManager.FindByEmailAsync(_options.AdminEmail) is not null)
-                return;
-            //Admin nesnesini hazırla(bilgiler appsettingsten geliyor)
-            var admin = new AppUser
+            foreach (var a in _options.Admins)
             {
-                UserName=_options.AdminUserName,
-                Email=_options.AdminEmail,
-                EmailConfirmed=true,// eposta doğrulanmış sayılsın,login engellenmesin
-                FullName="System Administor"
 
-            };
-            // kullanıcı kaydedilsin
-            //createasync şifreyi hashleyip veritabanına yazar,sonucu döndürür
-            var result=await _userManager.CreateAsync(admin,_options.AdminPassword);
+                //Bu epostayla kullanıcı zaten varsa tekrardan oluşturma 
+                //FindByEmailAsync: Kullanıcıyı bulursa döndürür, bulamazsa null döner.
+                if (await _userManager.FindByEmailAsync(a.AdminEmail) is not null)
+                    continue;
+                //Admin nesnesini hazırla(bilgiler appsettingsten geliyor)
+                var admin = new AppUser
+                {
+                    UserName = a.AdminUserName,
+                    Email = a.AdminEmail,
+                    EmailConfirmed = true,// eposta doğrulanmış sayılsın,login engellenmesin
+                    FullName =a.FullName
 
-            //Kayıt başarısızsa(örn şifre kurallara uymuyorsa) hatayı logla çık
-            if (!result.Succeeded)
-            {
-                LogErrors(admin.UserName, result);
-                return;
+                };
+
+
+                // kullanıcı kaydedilsin
+                //createasync şifreyi hashleyip veritabanına yazar,sonucu döndürür
+                var result = await _userManager.CreateAsync(admin,a.AdminPassword);
+
+
+                //Kayıt başarısızsa(örn şifre kurallara uymuyorsa) hatayı logla çık
+                if (!result.Succeeded)
+                {
+                    LogErrors(admin.UserName, result);
+                    continue;
+                }
+                //Admin rolünü ver
+                //JWT üretilirken u kullanıcının token'ına "role:Admin" claim'i buradan gelecek
+                await _userManager.AddToRoleAsync(admin, AdminRole);
+                _logger.LogInformation("Admin oluşturuldu: {Email}", admin.Email);
             }
-            //Admin rolünü ver
-            //JWT üretilirken u kullanıcının token'ına "role:Admin" claim'i buradan gelecek
-            await _userManager.AddToRoleAsync(admin, AdminRole);
-            _logger.LogInformation("Admin oluşturuldu: {Email}", admin.Email);
         }
         //Identity  hatalarını tek satırda loglar
         private void LogErrors(string userName, IdentityResult result)

@@ -16,13 +16,16 @@ namespace UserManagement.Application
         public static IServiceCollection AddApplication(this IServiceCollection services)
         {
             // Bu projedeki TÜM validator'ları (AbstractValidator<T>'den türeyenleri) bulup kaydeder.
-            // Her yeni validator için ayrı satır yazmana gerek kalmaz.
+            // ValidationService validator'lara gevşek bağlı: somut sınıfları tanımaz, DI'dan IValidator<T> ister.
+            // Kayıt olmazsa GetService null döner ve doğrulama sessizce atlanır
             services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
 
             // Scoped: her HTTP isteği için bir örnek oluşturulur.
             // Repository ve DbContext de scoped olduğu için servisler de scoped olmalı.
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<IAuthService, AuthService>();
+            //Validation hizmeti de kaydedilir
+            services.AddScoped<IValidationService, ValidationService>();
 
             return services; // zincirleme çağrı için: AddApplication().AddInfrastructure(...)
 

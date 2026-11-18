@@ -1,0 +1,52 @@
+
+
+services:
+#“SQL Server ve Redis sağlıklı olmadan beni başlatma.”
+  usermanagement.api:
+    image: ${DOCKER_REGISTRY-}usermanagementapi
+    build:
+      context: .
+      dockerfile: UserManagement.API/Dockerfile
+    environment:
+      # appsettings.json'daki bağlantıları EZER ("__" = JSON'daki iç içe geçme)
+      # Container içinde "localhost" kendisi demek; diğer container'lara SERVİS ADIYLA ulaşılır.
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=UserManagementDb;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;MultipleActiveResultSets=True
+      - ConnectionStrings__Redis=redis:6379
+    depends_on:
+      sqlserver:
+        condition: service_healthy   # SQL Server gerçekten hazır olana kadar API başlamasın
+      redis:
+        condition: service_healthy
+   # ---------- SQL Server ----------
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      - ACCEPT_EULA=Y                     # Microsoft lisansını kabul et (zorunlu)
+      - MSSQL_SA_PASSWORD=${SA_PASSWORD}  # Parola .env dosyasından gelir
+    ports:
+      - "14330:1433"   # SSMS'ten bağlanmak için: localhost,14330 (1433 bilgisayardaki SQL ile çakışmasın)
+    volumes:
+      - sqldata:/var/opt/mssql   # Container silinse bile veritabanı kaybolmasın
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -Q \"SELECT 1\" || exit 1"]
+      interval: 10s     # test komutu 10 sn'de bir tekrar çalıştırılır
+      timeout: 5s       # test 5 sn içinde bitmezse durdurulur ve o deneme "başarısız" sayılır (donmuş servis böyle anlaşılır)
+      retries: 10       # art arda 10 başarısız test → "unhealthy"; tek bir yavaş cevap yüzünden hemen bozuk sayılmaz
+      start_period: 20s # açılıştaki ilk 20 sn içindeki başarısızlıklar retries'a sayılmaz (SQL Server yavaş açılır)
+ 
+
+        # ---------- Redis ----------
+  redis:
+    image: redis:7
+    # ports YOK: sadece API ulaşıyor, dışarı açmaya gerek yok.
+    # (Açsaydık 1. aşamadaki "redis" container'ıyla 6379 portu çakışırdı.)
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]  # Redis'e "ping" gönderir; "PONG" dönerse başarılı (servise bakan tek satır bu)
+      interval: 5s                        # test komutu 5 sn'de bir tekrar çalıştırılır
+      timeout: 3s                         # test 3 sn içinde bitmezse durdurulur ve o deneme "başarısız" sayılır (donmuş servis böyle anlaşılır)
+      retries: 5                          # art arda 5 başarısız test → "unhealthy"; tek bir yavaş cevap yüzünden hemen bozuk sayılmaz
+      # start_period yok: Redis neredeyse anında açıldığı için açılışa ek süre tanımaya gerek yok
+
+volumes:
+  sqldata:
+

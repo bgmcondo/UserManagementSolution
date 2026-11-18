@@ -39,7 +39,8 @@ namespace UserManagement.Application.Services
             await _validationService.ValidateAsync(request, ct);
 
             //kullanıcıyı eposta adresiyle buluyoruz
-            var user = await _userRepository.GetByEmailAsync(request.UserNameOrEmail,ct);
+            var user = await _userRepository.GetByEmailAsync(request.UserNameOrEmail, ct) ?? await
+                _userRepository.GetByUserNameAsync(request.UserNameOrEmail,ct);
             //kullanıcı veya şifre yoksa null dönüyoruz
             //    İkisine aynı cevabı veriyoruz; farklı mesaj verirsek saldırgan
             //    hangi e-postaların sistemde kayıtlı olduğunu öğrenebilir.
