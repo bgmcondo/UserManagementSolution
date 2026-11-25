@@ -15,7 +15,6 @@ public class ChangePasswordRequestDtoValidator : AbstractValidator<ChangePasswor
             .NotEmpty().WithMessage("Mevcut parola boş olamaz.");
 
         RuleFor(x => x.NewPassword)
-            .Cascade(CascadeMode.Stop)
             .ValidPassword(policy)              // boşluk + uzunluk + harf/rakam kuralları
             .NotEqual(x => x.CurrentPassword)
                 .WithMessage("Yeni parola mevcut paroladan farklı olmalıdır.");

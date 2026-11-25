@@ -56,6 +56,11 @@ namespace UserManagement.Infrastructure
 
                 // Aynı e-postayla iki kullanıcı olmasın
                 options.User.RequireUniqueEmail = true;
+
+                // Brute-force koruması: 5 yanlış denemede hesap 15 dk kilitlenir
+                options.Lockout.MaxFailedAccessAttempts = 5;
+                options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+                options.Lockout.AllowedForNewUsers = true;
             })
                 .AddRoles<IdentityRole<Guid>>()               // RoleManager + AddToRoleAsync için
                 .AddEntityFrameworkStores<AppDbContext>();    // kullanıcı ve rolleri bu DbContext'e kaydet

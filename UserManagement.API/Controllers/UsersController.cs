@@ -1,15 +1,17 @@
-﻿using Microsoft.AspNetCore.Http.HttpResults;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using UserManagement.Application.DTOs;
 using UserManagement.Application.Interfaces;
-using UserManagement.Application.Validators;
 
 namespace UserManagement.API.Controllers
 {
     [ApiController]//Bu bir API controller'ı, doğrulamayı otomatik yapar
     [Route("api/[controller]")] //Controllerın adresini belirler
+    [Authorize] //Tokensız gelen her istek 401 alıyor.Rol isteyenler ayrıca 403 verebilir
     public class UsersController : ControllerBase
     {
+        private const string AdminRole = "Admin";
         private readonly IUserService _userService;
 
         public UsersController(IUserService userService)
@@ -18,7 +20,13 @@ namespace UserManagement.API.Controllers
 
         }
 
+        //Tokendaki sub claimi JwtBearer tarafından claim identifera çevrilir
+        // [Authorize] olduğu için buraya gelen her istekte token var, claim boş olamaz.
+        private Guid CurrentUserId =>
+            Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
         [HttpGet]
+        [Authorize(Roles =AdminRole)]
         public async Task<IActionResult> GetAll(CancellationToken ct)
         {
             var result = await _userService.GetAllAsync(ct);
@@ -27,6 +35,7 @@ namespace UserManagement.API.Controllers
         }
 
         [HttpGet("{id:guid}")]
+        [Authorize(Roles = AdminRole)]
         public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
         {
             var result = await _userService.GetByIdAsync(id, ct);
@@ -34,6 +43,7 @@ namespace UserManagement.API.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = AdminRole)]
         public async Task<IActionResult> Create(CreateUserRequestDto createUserRequestDto, CancellationToken ct)
         {
             var result = await _userService.CreateAsync(createUserRequestDto, ct);
@@ -42,6 +52,7 @@ namespace UserManagement.API.Controllers
         }
 
         [HttpPut("{id:guid}")]
+        [Authorize(Roles = AdminRole)]
         public async Task<IActionResult> Update(Guid id, UpdateUserRequestDto updateUserRequestDto, CancellationToken ct)
         {
             var result = await _userService.UpdateAsync(id, updateUserRequestDto, ct);
@@ -49,29 +60,42 @@ namespace UserManagement.API.Controllers
 
         }
         // DELETE api/users/{id} → Kullanıcıyı siler
-        // Kullanıcı yoksa servis KeyNotFoundException fırlatır → middleware 404 döner
+        // Kullanıcı yoksa servis NotFoundException fırlatır → middleware 404 döner
         [HttpDelete("{id:guid}")]
+        [Authorize(Roles = AdminRole)]
         public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
         {
-            await _userService.DeleteAsync(id, ct);
+            await _userService.DeleteAsync(id,CurrentUserId ,ct);
 
             return NoContent(); // 204: Silindi, dönecek veri yok
         }
-        // PATCH api/users/{id}/username → Kullanıcının sadece kullanıcı adını değiştirir
+
+        // ---------- Giriş yapmış her kullanıcı, sadece KENDİSİ için ----------
+        // id URL'den alınmaz, token'dan alınır. Böylece kimse başkasının hesabına dokunamaz.
+
+        // GET api/users/me → Kendi bilgilerim
+        [HttpGet("me")]
+        public async Task<IActionResult> GetMe(CancellationToken ct)
+        {
+            var result = await _userService.GetByIdAsync(CurrentUserId, ct);
+            return Ok(result);
+        }
+
+        // PATCH api/users/username → Kullanıcının sadece kullanıcı adını değiştirir
         // id → URL'den, request → body'deki JSON'dan gelir ([ApiController] otomatik ayırır)
         // Kullanıcı yoksa servis KeyNotFoundException fırlatır → middleware 404 döner
-        [HttpPatch("{id:guid}/username")]
+        [HttpPatch("me/username")]
 
-        public async Task<IActionResult> ChangeUserName(Guid id, ChangeUserNameRequestDto changeUserNameRequestDto, CancellationToken ct)
+        public async Task<IActionResult> ChangeUserName(ChangeUserNameRequestDto changeUserNameRequestDto, CancellationToken ct)
         {
-            await _userService.ChangeUserNameAsync(id, changeUserNameRequestDto, ct);
+            await _userService.ChangeUserNameAsync(CurrentUserId, changeUserNameRequestDto, ct);
             return NoContent();   // 204: Güncellendi, dönecek veri yok
 
         }
-        [HttpPatch("{id:guid}/password")]
-        public async Task<IActionResult> ChangeUserPassword(Guid id, ChangePasswordRequestDto changePasswordRequestDto, CancellationToken ct)
+        [HttpPatch("me/password")]
+        public async Task<IActionResult> ChangeUserPassword( ChangePasswordRequestDto changePasswordRequestDto, CancellationToken ct)
         {
-            await _userService.ChangePasswordAsync(id, changePasswordRequestDto, ct);
+            await _userService.ChangePasswordAsync(CurrentUserId, changePasswordRequestDto, ct);
             return NoContent();   // 204: Güncellendi, dönecek veri yok
 
         }

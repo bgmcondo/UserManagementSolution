@@ -11,7 +11,10 @@ using UserManagement.Application.Interfaces;
 using UserManagement.Application.Mappings;
 using UserManagement.Application.Services;
 using UserManagement.Domain.Entities;
+using UserManagement.Application.Exceptions;
 using Xunit;
+using Microsoft.AspNetCore.Identity;
+
 
 
 namespace UserManagement.UnitTests.Application.Services
@@ -79,9 +82,9 @@ namespace UserManagement.UnitTests.Application.Services
             // ---------- Act ----------
             var result = await _service.GetAllAsync(CancellationToken.None);
 
-                // ---------- Assert ----------
-                // 1) Dönen liste cache'teki listenin ta kendisi olmalı
-    result.Should().BeSameAs(cachedUsers);
+            // ---------- Assert ----------
+            // 1) Dönen liste cache'teki listenin ta kendisi olmalı
+            result.Should().BeSameAs(cachedUsers);
 
             // 2) Repository'ye hiç dokunulmamalı
             _userRepositoryMock.VerifyNoOtherCalls();
@@ -95,7 +98,8 @@ namespace UserManagement.UnitTests.Application.Services
         }
 
         [Fact]
-        public async Task GetAllAsync_CacheMiss_ReturnsUsersFromRepository() {
+        public async Task GetAllAsync_CacheMiss_ReturnsUsersFromRepository()
+        {
 
             //Arrange
             //Cache için setup yok
@@ -116,7 +120,7 @@ namespace UserManagement.UnitTests.Application.Services
             //Gerçek servisi çağırıyoruz
             //cache boş olduğu için servis repoya gidecek
             //setupda verdiğimiz listeyi alıp Dto ya çevirecek
-            var result=await _service.GetAllAsync(CancellationToken.None);
+            var result = await _service.GetAllAsync(CancellationToken.None);
 
             //Assert 
             //Repositorye bir kullanıcı verdik 
@@ -152,12 +156,179 @@ namespace UserManagement.UnitTests.Application.Services
                 c => c.SetAsync(
                     CacheKeys.AllUsers,
                     It.Is<List<UserResponseDto>>(l => l.Count == 1 && l[0].Email == user.Email),
-                    It.IsAny<TimeSpan?>(),
-                    It.IsAny<TimeSpan>(),
+                    It.IsAny<TimeSpan?>(),      // 3 absoluteExpiration
+
+                    It.IsAny<TimeSpan?>(),     // 4 slidingExpiration
                     It.IsAny<CancellationToken>()),
                 Times.Once);
 
         }
+
+
+        //Kullanıcı veritabanında varsa servis onu DTO'ya çevirip dönmeli
+        [Fact]
+        public async Task GetByIdAsync_UserExists_ReturnsDto()
+        {
+            //Arrange
+            var user = CreateUser();
+
+            //Talimat tam olarak bu id ile sorulursa kullanıcıyı döndürür
+            // It.IsAny<CancellationToken>() → token ne olursa olsun talimat geçerli
+            // (token'ın değeri bu testin konusu değil)
+            _userRepositoryMock.Setup(r => r.GetByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+
+            //Act
+            var result = await _service.GetByIdAsync(user.Id, CancellationToken.None);
+
+            //Assert
+            result.Should().NotBeNull();
+            result!.Id.Should().Be(user.Id);
+            result.Should().Be(user.Email);
+        }
+
+        //Kullnıcı yoksa servis null dönmemeli NotFoundException Fırlatmalı
+
+        [Fact]
+        public async Task GetByIdAsync_UserNotFoundThrowsNotFoundException()
+        {
+            //arrange :Test için gereken her şeyi kurulduğu kısım: sahte veri, mock talimatları
+            // Setup YOK → Moq GetByIdAsync için null döner, yani "kullanıcı yok"
+            var id = Guid.NewGuid();
+
+            //Act
+            //metodu hemen çalıştırmıyoruz bir değişkene koyuyoruz
+            //çünkü hata  fırlatacak;FluentAssertions onu yakalayıp kontrol edecek
+            Func<Task> act = () => _service.GetByIdAsync(id, CancellationToken.None);
+
+
+            // Assert
+            // "Bu çalışınca NotFoundException fırlatmalı"
+            await act.Should().ThrowAsync<NotFoundException>();
+
+        }
+        //Aynı eposta kayıtlıysa ConflictException(409) fırlatmalı
+        //kullanıcı oluşturulmamalı
+
+
+        [Fact]
+
+        public async Task CreateAsync_EmailAlreadyExists_ThrowsConflictException()
+        {
+            var request = CreateRequest();
+
+            //Bu epostayla sorulursa zaten bir kullanıcı var diyoruz
+
+            _userRepositoryMock.Setup(r => r.GetByEmailAsync(request.Email, It.IsAny<CancellationToken>())).ReturnsAsync(CreateUser());
+
+            //Act 
+            Func<Task> act = () => _service.CreateAsync(request, CancellationToken.None);
+
+            //assert
+
+            await act.Should().ThrowAsync<ConflictException>();
+
+            //Sahte repository, defterine bak: gerçek servis senin CreateAsync metodunu hiç çağırdı mı? Sıfır kere olmalı.
+
+            // Hata fırladıysa repository'nin CreateAsync'i HİÇ çağrılmamalı
+            //   It.IsAny<AppUser>() → hangi kullanıcı nesnesi olursa olsun
+            //   Times.Never         → hiç çağrılmamış olmalı
+            //Bu kodun amacı zaten bu emailin kaydı var tekrardan oluşturulmadığı  doğrulansın
+            _userRepositoryMock.Verify(
+                r => r.CreateAsync(It.IsAny<AppUser>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+
+        }
+
+
+        // Her şey yolundaysa: kullanıcı "User" rolüyle oluşturulmalı,
+        // liste cache'i temizlenmeli ve adminlere bildirim gitmeli
+        [Fact]
+        public async Task CreateAsync_ValidRequest_CreateUser_ClearsCacheAndNotifies()
+        {
+            //Arrange
+            var request = CreateRequest();
+            // GetByEmailAsync için Setup YOK → null döner → e-posta boşta
+            // Repository'ye: "CreateAsync çağrılırsa başarılı sonuç döndür"
+            _userRepositoryMock.Setup(r => r.CreateAsync(It.IsAny<AppUser>(), request.Password, "User", It.IsAny<CancellationToken>())).ReturnsAsync(IdentityResult.Success);
+
+            //Act
+            var result = await _service.CreateAsync(request, CancellationToken.None);
+
+            result.Should().NotBeNull();
+            result.Email.Should().Be(request.Email);
+            result.UserName.Should().Be(request.UserName);
+
+            //verify işlemi
+            //kullanıcı bir kere kaydedilmiş olmalı 
+
+            _userRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<AppUser>(), request.Password, "User", It.IsAny<CancellationToken>()), Times.Once);
+
+            //liste cacheleri temizlenmiş olmalı 
+            _cacheServiceMock.Verify(c => c.RemoveByPrefixAsync(CacheKeys.UserListPrefix, It.IsAny<CancellationToken>()), Times.Once);
+
+            //Adminlere  bu kullanıcı için bildirim gitmiş olmalı
+            _notificationServiceMock.Verify(n => n.NotifyUserCreatedAsync(It.Is<UserResponseDto>(u => u.Email == request.Email), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+
+
+        //Kullanıcı yoksa:NotFoundException fırlatmalı hiçbir şey kaydedilmemeli
+        [Fact]
+        public async Task UpdateAsync_UserNotFound_ThrowsNotFoundExceptionAsync()
+        {
+            // Arrange
+            // GetByIdAsync için Setup YOK → null döner → kullanıcı yok
+            var id = Guid.NewGuid();
+
+            var request = UpdateRequest();
+            //act
+
+            Func<Task> Act = () => _service.UpdateAsync(id, request, CancellationToken.None);
+
+            //assert
+            await Act.Should().ThrowAsync<NotFoundException>();
+
+            //Kullanıcı bulunamadıysa güncellenme hiç denenmemeli
+
+            _userRepositoryMock.Verify( r => r.UpdateAsync(It.IsAny<AppUser>(), It.IsAny<CancellationToken>()), Times.Never);
+
+
+        }
+
+
+        //Herşey yolundaysa:Yeni değerler kullanıcıya aktarılmalı,kaydedilmeli
+        //Hem kullanıcının kendi cache'i hem de liste cacheleri temizlenmeli
+        [Fact]
+        public async Task UpdateAsync_ValidRequest_UpdatesUserAndClearsCache()
+        {
+            //Arrange
+            var user=CreateUser();
+            var request = UpdateRequest();
+
+            _userRepositoryMock.Setup(r => r.GetByIdAsync(user.Id,It.IsAny<CancellationToken>())).ReturnsAsync(user);
+
+            _userRepositoryMock.Setup(r => r.UpdateAsync(user,It.IsAny<CancellationToken>())).ReturnsAsync(IdentityResult.Success);
+
+            //Act
+            var result = await _service.UpdateAsync(user.Id, request, CancellationToken.None);
+
+            //Assert
+            //Dönen Dto yeni bilgileri taşımalı 
+            result.Email.Should().Be(request.Email);
+            result.FullName.Should().Be(request.FullName);
+            result.PhoneNumber.Should().Be(request.PhoneNumber);
+
+            //Kaydedilen kullanıcı listesinde yeni eposta olmalı 
+            _userRepositoryMock.Verify(r => r.UpdateAsync(It.Is<AppUser>(u=>u.Email==request.Email),It.IsAny<CancellationToken>()),Times.Once);
+
+            //Bu kullanıcının tek kayıt cache 
+
+
+
+        }
+
+
+
 
 
 
@@ -169,6 +340,25 @@ namespace UserManagement.UnitTests.Application.Services
             Email = "ayse@test.com",
             FullName = "Ayşe"
         };
+
+        private static CreateUserRequestDto CreateRequest() => new(
+           UserName: "ayse",
+           Email: "ayse@test.com",
+           Password: "Test123!",
+           FullName: "Ayşe",
+           PhoneNumber: null,
+           Website: null,
+           Address: null,
+           Company: null);
+
+
+        private static UpdateUserRequestDto UpdateRequest() => new(
+           Email: "yeni@test.com",
+           FullName: "Ayşe Yeni",
+           PhoneNumber: "555-1234",
+           Website: null,
+           Address: null,
+           Company: null);
 
     }
 }

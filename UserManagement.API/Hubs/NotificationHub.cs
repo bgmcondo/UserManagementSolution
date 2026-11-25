@@ -1,10 +1,11 @@
 ﻿using Microsoft.AspNetCore.SignalR;
 
+
 namespace UserManagement.API.Hubs
 {
     // SignalR hub'ı: Frontend bu sınıfa bağlanır, sunucu buradan anlık bildirim gönderir.
     // Hub'dan türemek ZORUNLU, yoksa MapHub kabul etmez.
-    // [Authorize] // JWT kurulunca açılacak: sadece giriş yapanlar bağlanabilsin
+    // Yetki kuralı Program.cs'te: MapHub<NotificationHub>(...).RequireAuthorization()
 
 
     public class NotificationHub : Hub

@@ -10,8 +10,7 @@ namespace UserManagement.Application.Interfaces
         //kısa ömürlüdür
         // IEnumerable<string> = “içinde string olan, foreach ile dolaşılabilen herhangi bir şey.”
         //Bu yüzden metoda liste de, dizi de verebilirsin, hepsi çalışır
-       AccessTokenResult  GenerateAccessToken(Guid userId,string email, IEnumerable<string> roles);
-        
+        AccessTokenResult GenerateAccessToken(Guid userId, string email, string securityStamp, IEnumerable<string> roles);
         //token yenileme için kullanılacak rastgele bir değer üretir
         string GenerateRefreshToken();
 

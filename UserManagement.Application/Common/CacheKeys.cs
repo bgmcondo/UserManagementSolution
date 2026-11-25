@@ -15,6 +15,10 @@
         /// <returns>Örnek: "users:42"</returns>
        public static string User(Guid id) => $"users:{id}";
 
+
+        // Kullanıcının güncel SecurityStamp'i (her istekte token'daki ile karşılaştırılır)
+        public static string SecurityStamp(Guid id) => $"users:stamp:{id}";
+
         //bütün kullanıcılar
         public const string AllUsers = UserListPrefix + "all";
 

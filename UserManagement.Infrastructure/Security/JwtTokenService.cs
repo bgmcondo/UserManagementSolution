@@ -7,7 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using UserManagement.Application.DTOs;
 using UserManagement.Application.Interfaces;
-
+using UserManagement.Application.Common;
 namespace UserManagement.Infrastructure.Security
 {
     public  class JwtTokenService : IJwtTokenService
@@ -23,7 +23,7 @@ namespace UserManagement.Infrastructure.Security
             _options = options.Value;
             
         }
-        public AccessTokenResult GenerateAccessToken(Guid userId, string email, IEnumerable<string> roles)
+        public AccessTokenResult GenerateAccessToken(Guid userId, string email,string securityStamp ,IEnumerable<string> roles)
         {
             //claimler token içine yazılması gereken bilgiler
             var claims = new List<Claim>
@@ -31,6 +31,7 @@ namespace UserManagement.Infrastructure.Security
                 //sub email service de konu olarak kullanılsa da token service de tokenın kim için üretildiğini gösteriyor  
                 new(JwtRegisteredClaimNames.Sub,userId.ToString()),
                 new(JwtRegisteredClaimNames.Email,email),
+                new(CustomClaimTypes.SecurityStamp,securityStamp),
                 new(JwtRegisteredClaimNames.Jti,Guid.NewGuid().ToString()) //tokena özel benzersiz id
             };
 

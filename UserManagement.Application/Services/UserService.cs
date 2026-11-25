@@ -104,6 +104,18 @@ namespace UserManagement.Application.Services
             var user = await GetUserOrThrowAsync(id, ct);
 
             // Önce değerleri entity'ye aktar, sonra kaydet
+            // E-posta gerçekten değiştiyse: yeni adres doğrulanmamış sayılır ve eski token'lar geçersiz olur.
+            // SetEmailAsync yerine burada yapıyoruz ki aşağıdaki tek UpdateAsync hepsini birlikte kaydetsin (1 UPDATE).
+            var emailChanged = !string.Equals(user.Email, updateUserRequestDto.Email, StringComparison.OrdinalIgnoreCase);
+
+            user.Email = updateUserRequestDto.Email;
+
+            if (emailChanged)
+            {
+                user.EmailConfirmed = false;                     // yeni adres henüz doğrulanmadı
+                //Securitystamp güvenlik bilgisi sürümü anlamına gelir.eposta değiştiğinde stamp de manuel olarak güncellenir ve eski tokenlar geçersiz olur
+                user.SecurityStamp = Guid.NewGuid().ToString();  
+            }
             user.FullName = updateUserRequestDto.FullName;
             user.PhoneNumber = updateUserRequestDto.PhoneNumber;
             user.Website = updateUserRequestDto.Website;
@@ -117,11 +129,14 @@ namespace UserManagement.Application.Services
             return user.ToResponseDto();
         }
 
-        public async Task DeleteAsync(Guid id, CancellationToken ct)
+        public async Task DeleteAsync(Guid id ,Guid currentUserId,CancellationToken ct)
         {
+            if (id == currentUserId)
+                throw new ForbiddenException("Kendi hesabınızı silemezsiniz.");
+
             var user = await GetUserOrThrowAsync(id, ct);
 
-            var result = await _userRepository.DeleteAsync(user, ct);
+            var result = await _userRepository.DeleteAsync(user,ct);
 
             // Silme hatası istemcinin girdisinden kaynaklanmaz (genelde eşzamanlılık/DB hatası) → 500
             if (!result.Succeeded)
@@ -162,7 +177,9 @@ namespace UserManagement.Application.Services
 
             var result = await _userRepository.ChangePasswordAsync(user, changePasswordRequestDto.CurrentPassword, changePasswordRequestDto.NewPassword, ct);
             ThrowIfFailed(result, "Parola değiştirilemedi");
-            // Cache temizlenmiyor: parola UserResponseDto'da yok, cache'teki veri değişmedi
+            await _cache.RemoveAsync(CacheKeys.SecurityStamp(userId), ct); //bu işlem  sadece şifre değiştiği durumda oluyor.
+
+
         }
 
         // ---------- Yardımcılar ----------
@@ -194,6 +211,7 @@ namespace UserManagement.Application.Services
         {
             await _cache.RemoveAsync(CacheKeys.User(id), ct);
             await _cache.RemoveByPrefixAsync(CacheKeys.UserListPrefix, ct);
+            await _cache.RemoveAsync(CacheKeys.SecurityStamp(id), ct);   // eski token'lar hemen reddedilsin
         }
 
     }

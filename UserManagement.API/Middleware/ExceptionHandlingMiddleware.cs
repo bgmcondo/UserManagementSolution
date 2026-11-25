@@ -36,6 +36,7 @@ public class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
+
             // Alttaki herhangi bir yerde hata olursa buraya düşer
             _logger.LogError(ex, "Beklenmeyen bir hata oluştu: {Message}", ex.Message);
             await HandleExceptionAsync(context, ex);
@@ -45,11 +46,13 @@ public class ExceptionHandlingMiddleware
     private static async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         // Hata türüne göre uygun HTTP durum kodunu seç
+
         var statusCode = exception switch
         {
-            ValidationException=>HttpStatusCode.BadRequest,//  400: Geçersiz veri / yanlış mevcut parola
-            KeyNotFoundException => HttpStatusCode.NotFound,            // 404: Kayıt bulunamadı
-            ArgumentException => HttpStatusCode.BadRequest,          // 400: Hatalı veri
+            // ArgumentException bilerek yok: bizim kodumuz fırlatmıyor, gelirse kütüphaneden gelir (bizim bug'ımız).
+            // 500'e düşsün: mesaj gizlenir, log'a tam yazılır. İstemci hatası için ValidationException kullanılır.
+            ValidationException => HttpStatusCode.BadRequest,//  400: Geçersiz veri / yanlış mevcut parola
+            NotFoundException => HttpStatusCode.NotFound,            // 404: Kayıt bulunamadı
             ForbiddenException=>HttpStatusCode.Forbidden, // yetki yok
             UnauthorizedException => HttpStatusCode.Unauthorized,        // 401: Yetkisiz
             ConflictException=>HttpStatusCode.Conflict, //  409: Aynı e - posta / kullanıcı adı

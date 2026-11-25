@@ -35,8 +35,8 @@ namespace UserManagement.Application.Interfaces
         //Bulunamazsa false döner
         Task <UserResponseDto> UpdateAsync(Guid id, UpdateUserRequestDto request, CancellationToken ct);
 
-        // Kullanıcıyı siler (Admin). Bulunamazsa false döner.
-        Task DeleteAsync(Guid id, CancellationToken ct);
+        // currentUserId: silme isteğini yapan kişi (token'dan). Kendini silmeyi engellemek için.
+        Task DeleteAsync(Guid id,Guid currentUserId, CancellationToken ct);
 
         // Kullanıcının kendi kullanıcı adını değiştirir. userId token'dan gelir, istemciden değil.
         // Mevcut parola yanlışsa veya yeni ad başkasındaysa ValidationException fırlatır.

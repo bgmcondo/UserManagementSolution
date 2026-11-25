@@ -27,6 +27,8 @@ namespace UserManagement.Application
             //Validation hizmeti de kaydedilir
             services.AddScoped<IValidationService, ValidationService>();
 
+            services.AddScoped<ISecurityStampService, SecurityStampService>();
+
             return services; // zincirleme çağrı için: AddApplication().AddInfrastructure(...)
 
         }

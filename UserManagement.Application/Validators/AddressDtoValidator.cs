@@ -17,6 +17,7 @@ namespace UserManagement.Application.Validators
             RuleFor(x => x.Suite).MaximumLength(100);
             RuleFor(x => x.City).MaximumLength(100);
             RuleFor(x => x.ZipCode).MaximumLength(20);
+            RuleFor(x => x.Geo!).SetValidator(new GeoDtoValidator()).When(x => x.Geo != null);
         }
     }
 }

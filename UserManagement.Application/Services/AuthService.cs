@@ -1,6 +1,7 @@
 ﻿using UserManagement.Application.DTOs;
 using UserManagement.Application.Interfaces;
 using UserManagement.Application.Exceptions;
+using UserManagement.Application.Common;
 namespace UserManagement.Application.Services
 {
  //Giriş akışını yönetir
@@ -20,6 +21,7 @@ namespace UserManagement.Application.Services
 
         private readonly IValidationService _validationService;
         private const string InvalidCredentialsMessage = "Kullanıcı adı/e-posta veya parola hatalı.";
+        private const string LockedOutMessage = "Çok fazla hatalı deneme. Hesabınız geçici olarak kilitlendi, daha sonra tekrar deneyin.";
         public AuthService(
 
        IValidationService validationService,
@@ -44,7 +46,15 @@ namespace UserManagement.Application.Services
             //kullanıcı veya şifre yoksa null dönüyoruz
             //    İkisine aynı cevabı veriyoruz; farklı mesaj verirsek saldırgan
             //    hangi e-postaların sistemde kayıtlı olduğunu öğrenebilir.
-            if (user == null||!await _userRepository.CheckPasswordAsync(user,request.Password,ct))
+            if (user == null)
+                throw new UnauthorizedException(InvalidCredentialsMessage);
+
+            var passwordResult = await _userRepository.CheckPasswordWithLockoutAsync(user, request.Password, ct);
+
+            if (passwordResult == PasswordCheckResult.LockedOut)
+                throw new UnauthorizedException(LockedOutMessage);
+
+            if (passwordResult == PasswordCheckResult.Failed)
                 throw new UnauthorizedException(InvalidCredentialsMessage);
             //roller appuser de yok repositoryden alıyoruz
             var roles = await _userRepository.GetRolesAsync(user,ct);
@@ -53,7 +63,7 @@ namespace UserManagement.Application.Services
                 throw new ForbiddenException("Hesabınıza rol atanmamış. Yöneticiyle iletişime geçin.");
             }
             // 4) Token'ları üret (bellekte hesaplama, await gerekmez)
-            var accessToken = _tokenService.GenerateAccessToken(user.Id, user.Email!, roles);
+            var accessToken = _tokenService.GenerateAccessToken(user.Id, user.Email!,user.SecurityStamp! ,roles);
 
             return new LoginResponseDto(accessToken.Token, accessToken.ExpiresAt);
         }

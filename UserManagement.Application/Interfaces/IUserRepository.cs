@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Identity;
+using UserManagement.Application.Common;
 using UserManagement.Domain.Entities;
 
 namespace UserManagement.Application.Interfaces
@@ -35,6 +36,11 @@ namespace UserManagement.Application.Interfaces
 
         // Mevcut parolayı doğrular, yenisini ayarlar.
         Task<IdentityResult> ChangePasswordAsync(AppUser user, string currentPassword, string newPassword, CancellationToken ct);
+
+
+        // Login için: kilitliyse LockedOut döner; yanlış parolada sayacı artırır,
+        // limit dolunca hesabı kilitler; doğru parolada sayacı sıfırlar.
+        Task<PasswordCheckResult> CheckPasswordWithLockoutAsync(AppUser user, string password, CancellationToken ct);
 
         Task<bool> CheckPasswordAsync(AppUser user, string password, CancellationToken ct);
 

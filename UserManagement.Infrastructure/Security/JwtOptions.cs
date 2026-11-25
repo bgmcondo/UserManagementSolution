@@ -14,6 +14,10 @@ public sealed class JwtOptions
 
         public const string SectionName = "jwt";
 
+
+        // HMAC-SHA256 en az 256 bit (32 byte) anahtar ister; daha kısası token üretirken hata verir
+        public const int MinSecretKeyBytes = 32;
+
         //tokenın kimin ürettiğini belirtir(token içindeki issuer claimi
         //doğrulama sırasında bu değer kontrol edilir;eşleşmezse token reddedilir
 
@@ -23,10 +27,7 @@ public sealed class JwtOptions
         //örn:frontend uygulaması veya token kullanacak bir başka istemci
         public string Audience { get; init; }=string.Empty;
 
-        //tokenı imzalamak ve doğrulamak için kullanılan gizli anahtar
-        // HMAC-SHA256 için en az 32 karakter olmalı.
-        //bu değer repoya konmaz
-
+        // HMAC-SHA256 için en az 32 BYTE olmalı (Türkçe karakterler 2 byte sayılır). Açılışta kontrol edilir.
         public string SecretKey {  get; init; }=string.Empty;
 
         //Access token'ın kaç dakika geçerli olacağı 

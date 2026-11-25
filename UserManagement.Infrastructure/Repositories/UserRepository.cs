@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using UserManagement.Application.Common;
 using UserManagement.Application.Interfaces;
 using UserManagement.Domain.Entities;
 
@@ -110,5 +111,35 @@ namespace UserManagement.Infrastructure.Repositories
                 .AnyAsync(u => u.NormalizedEmail == normalizedEmail, ct);
         }
 
+        public async Task<PasswordCheckResult> CheckPasswordWithLockoutAsync(AppUser user, string password, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+
+
+
+            // [BELLEK] Parolaya bakmadan  kilitli dön
+            if (await _userManager.IsLockedOutAsync(user))
+                return PasswordCheckResult.LockedOut;
+
+            //[Bellek] Parola hashi karşılaştır
+            if (await _userManager.CheckPasswordAsync(user, password))
+            {
+                // [DB] Sayaç > 0 ise sıfırlanır, 0 ise DB'ye gitmez
+                await _userManager.ResetAccessFailedCountAsync(user);
+
+                return PasswordCheckResult.Success;
+            }
+
+            // [DB] Sayaç +1, limit dolarsa kilitlenir
+            await _userManager.AccessFailedAsync(user);
+
+            // [Bellek] Bu deneme kilidi tetikledi mi?
+            return await _userManager.IsLockedOutAsync(user)
+                ? PasswordCheckResult.LockedOut
+                : PasswordCheckResult.Failed;
+
+
+
+        }
     }
 }

@@ -1,5 +1,6 @@
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi;
 using UserManagement.API.Extensions;
 using UserManagement.API.Hubs;
 using UserManagement.API.Middleware;
@@ -30,8 +31,9 @@ builder.Services.AddApplication();
 //Dış dünyayla konuştuğu içi bu katman appsettingjson'dan connectionstring,eposta sunucu jwt key ve issuer vb ister
 builder.Services.AddInfrastructure(builder.Configuration);
 
-// Controller sınıflarını ([ApiController]) kullanabilmek için gerekli servisler.
-builder.Services.AddControllers();
+
+// Controller'lar + [ApiController] hata formatı (Extensions/ControllerExtensions.cs)
+builder.Services.AddApiControllers();
 
 // SignalR'ı (gerçek zamanlı bildirim / WebSocket) etkinleştirir.
 // Hubs klasöründeki NotificationHub bunun sayesinde çalışır.
@@ -42,7 +44,29 @@ builder.Services.AddSingleton<INotificationService, SignalRNotificationService>(
 builder.Services.AddEndpointsApiExplorer();
 
 // Swagger dokümanını üretir (API'yi tarayıcıdan test ettiğin ekran).
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(
+    options =>
+    {
+
+        // Swagger'da sağ üstte "Authorize" butonu çıkar, login'den aldığın token'ı oraya yapıştırırsın
+        options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+        {
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT",
+            Description = "Login'den dönen accessToken'ı yapıştır (başına 'Bearer' yazma)"
+        });
+        // Bütün isteklere bu token'ı otomatik ekler
+        options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+        {
+            [new OpenApiSecuritySchemeReference("Bearer", document)] = []
+        });
+
+
+
+    }
+    
+    );
 // CORS: Farklı bir adresten (ör. React uygulaması: localhost:3000) gelen
 // isteklere izin verir. Tarayıcı, varsayılan olarak başka adrese istek atmayı engeller.
 builder.Services.AddCors(o => o.AddPolicy("client", p => p
@@ -100,6 +124,7 @@ app.UseAuthorization();
 
 
 app.MapControllers();
-app.MapHub<NotificationHub>("/hubs/notifications");
+//Tokenı olmayan giremez
+app.MapHub<NotificationHub>("/hubs/notifications").RequireAuthorization();
 
 app.Run();
