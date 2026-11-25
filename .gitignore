@@ -361,3 +361,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Docker şifreleri (SA_PASSWORD) — repoya girmemeli
+.env
