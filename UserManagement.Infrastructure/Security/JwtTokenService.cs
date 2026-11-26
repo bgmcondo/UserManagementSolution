@@ -23,7 +23,7 @@ namespace UserManagement.Infrastructure.Security
             _options = options.Value;
             
         }
-        public AccessTokenResult GenerateAccessToken(Guid userId, string email,string securityStamp ,IEnumerable<string> roles)
+        public AccessTokenResult GenerateAccessToken(Guid userId, string email,string userName,string securityStamp ,IEnumerable<string> roles)
         {
             //claimler token içine yazılması gereken bilgiler
             var claims = new List<Claim>
@@ -31,6 +31,8 @@ namespace UserManagement.Infrastructure.Security
                 //sub email service de konu olarak kullanılsa da token service de tokenın kim için üretildiğini gösteriyor  
                 new(JwtRegisteredClaimNames.Sub,userId.ToString()),
                 new(JwtRegisteredClaimNames.Email,email),
+                // unique_name: JwtBearer bunu ClaimTypes.Name'e çevirir → User.Identity.Name dolar
+        new(JwtRegisteredClaimNames.UniqueName, userName),
                 new(CustomClaimTypes.SecurityStamp,securityStamp),
                 new(JwtRegisteredClaimNames.Jti,Guid.NewGuid().ToString()) //tokena özel benzersiz id
             };

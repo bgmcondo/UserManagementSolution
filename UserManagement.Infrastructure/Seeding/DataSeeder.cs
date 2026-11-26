@@ -2,7 +2,9 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Globalization;
 using System.Net.Http.Json;
+using System.Text.Json;
 using UserManagement.Domain.Entities;
 using UserManagement.Domain.ValueObjects;
 using UserManagement.Infrastructure.Seeding.Models;
@@ -53,16 +55,52 @@ namespace UserManagement.Infrastructure.Seeding
             }
             await SeedRolesAsync();
             await SeedAdminAsync();
-            await SeedExternalUserAsync(cancellationToken);
+            // Roller ve adminler her ortamda gerekli; örnek kullanıcılar sadece geliştirmede
+            if (_options.SampleUsersEnabled)
+                await SeedExternalUserAsync(cancellationToken);
+            else
+                _logger.LogInformation("Örnek kullanıcılar kapalı (Seed:SampleUsersEnabled=false), atlanıyor.");
 
         }
+        // Kullanıcıyı role ekler; önceki açılışta rolsüz kalmış kullanıcıyı da düzeltir.
+        // Sadece uygulama açılışında çalışır, isteklerde değil.
+        private async Task EnsureRoleAsync(AppUser user, string role)
+        {
+            // Ayrıca IsInRoleAsync çağırmıyoruz: AddToRoleAsync içeride zaten "rolde mi?" diye bakıyor.
+            // [DB] Zaten roldeyse: ~2 SELECT (rolü bul + eşleşme var mı), hiçbir şey yazılmaz → "UserAlreadyInRole"
+            // [DB] Rolsüzse: yukarıdakiler + ad/e-posta benzersizlik kontrolü (2 SELECT) + INSERT (rol eşleşmesi)
+            var result = await _userManager.AddToRoleAsync(user, role);
+
+            // [Bellek] "Zaten rolde" hata değil, istediğimiz durum; sadece gerçek hataları logla
+            if (!result.Succeeded && result.Errors.Any(e => e.Code != "UserAlreadyInRole"))
+                LogErrors(user.UserName ?? user.Email ?? "?", result);
+        }
+
         // jsonplaceholder'dan kullanıcıları çekip ekler (her biri için: yoksa)
         private async Task SeedExternalUserAsync(CancellationToken cancellationToken)
         {
+            if (string.IsNullOrWhiteSpace(_options.DefaultPassword))
+            {
+                _logger.LogWarning("Seed:DefaultPassword boş, örnek kullanıcılar eklenmiyor.");
+                return;
+            }
             //kullanıcı dışı adresten çek
             //GetFromJsonAsync:İsteği atar, gelen json'ı otomatik olarak listeye çevirir
-            var externalUsers = await _httpClient.GetFromJsonAsync<List<JsonPlaceholderUser>>(_options.UsersUrl, cancellationToken);
-            if(externalUsers is null||externalUsers.Count==0)
+            List<JsonPlaceholderUser>? externalUsers;
+            try
+            {
+                externalUsers = await _httpClient.GetFromJsonAsync<List<JsonPlaceholderUser>>(_options.UsersUrl, cancellationToken);
+            }
+            catch (Exception ex) when (ex is HttpRequestException      // site kapalı, internet yok
+                                          or TaskCanceledException     // süre doldu
+                                          or JsonException             // gelen veri bozuk
+                                          or NotSupportedException)    // gelen cevap JSON değil
+            {
+                // Örnek kullanıcılar zorunlu değil: uyar ve devam et, API yine açılsın
+                _logger.LogWarning(ex, "Örnek kullanıcılar alınamadı ({Url}), atlanıyor.", _options.UsersUrl);
+                return;
+            }
+            if (externalUsers is null||externalUsers.Count==0)
             {
                 _logger.LogWarning("Dış servisten kullanıcı gelmedi");
                 return;
@@ -70,11 +108,14 @@ namespace UserManagement.Infrastructure.Seeding
             }
             foreach (var externalUser in externalUsers)
             {
-                if (await _userManager.FindByEmailAsync(externalUser.Email) is not null)
-                    continue;
-
                 //Eğer veritabanında bu emaile sahip şahıs varsa döngünün bu adımını atlıyoruz(continue) ile tekrar döngü başına geliyoruz
                 //eğer tam tersi ise devam ediyoruz
+                var existingUser = await _userManager.FindByEmailAsync(externalUser.Email);
+                if (existingUser is not null)
+                {
+                    await EnsureRoleAsync(existingUser, UserRole);
+                    continue;
+                }
                 var user = new AppUser
                 {
                     UserName = externalUser.UserName,
@@ -86,10 +127,6 @@ namespace UserManagement.Infrastructure.Seeding
                     Address = MapAddress(externalUser.Address),
                     Company=MapCompany(externalUser.Company),
                 
-
-                
-
-
                 };
 
                 //Kullanıcıyı şifresiyle kaydediyoruz
@@ -99,9 +136,9 @@ namespace UserManagement.Infrastructure.Seeding
                 {
                     LogErrors(user.UserName, result);
                     continue;
-                    //Normal kullanıcılara User rolü ver
                 }
-                await _userManager.AddToRoleAsync(user, UserRole);
+                //Normal kullanıcılara User rolü ver
+                await EnsureRoleAsync(user, UserRole);
                 _logger.LogInformation("Kullanıcı eklendi: {UserName}", user.UserName);
 
             }
@@ -112,13 +149,21 @@ namespace UserManagement.Infrastructure.Seeding
 
         private async Task SeedAdminAsync()
         {
+            if (_options.Admins.Count == 0)
+            {
+                _logger.LogWarning("Seed:Admins boş, hiç admin oluşturulmuyor. Kullanıcı yönetimi yapılamaz.");
+                return;
+            }
             foreach (var a in _options.Admins)
             {
-
-                //Bu epostayla kullanıcı zaten varsa tekrardan oluşturma 
+                //Bu epostayla kullanıcı zaten varsa tekrardan oluşturma, sadece rolünü kontrol et
                 //FindByEmailAsync: Kullanıcıyı bulursa döndürür, bulamazsa null döner.
-                if (await _userManager.FindByEmailAsync(a.AdminEmail) is not null)
+                var existingAdmin = await _userManager.FindByEmailAsync(a.AdminEmail);
+                if (existingAdmin is not null)
+                {
+                    await EnsureRoleAsync(existingAdmin, AdminRole);
                     continue;
+                }
                 //Admin nesnesini hazırla(bilgiler appsettingsten geliyor)
                 var admin = new AppUser
                 {
@@ -143,7 +188,7 @@ namespace UserManagement.Infrastructure.Seeding
                 }
                 //Admin rolünü ver
                 //JWT üretilirken u kullanıcının token'ına "role:Admin" claim'i buradan gelecek
-                await _userManager.AddToRoleAsync(admin, AdminRole);
+                await EnsureRoleAsync(admin, AdminRole);
                 _logger.LogInformation("Admin oluşturuldu: {Email}", admin.Email);
             }
         }
@@ -161,14 +206,21 @@ namespace UserManagement.Infrastructure.Seeding
                 if (await _roleManager.RoleExistsAsync(roleName))
                     continue;
 
-            await _roleManager.CreateAsync(new IdentityRole<Guid>(roleName));
+           var result= await _roleManager.CreateAsync(new IdentityRole<Guid>(roleName));
+                // Başarısızsa hatayı logluyoruz
+                if (!result.Succeeded)
+                {
+                    _logger.LogError("Rol oluşturulamadı: {Role}. Hatalar: {Errors}",
+                        roleName, string.Join(", ", result.Errors.Select(e => e.Description)));
+                    continue;
+                }
                 _logger.LogInformation("Rol oluşturuldu:{Role}",roleName);
 
                     }
 
         }
 
-        private static Address? MapAddress(JsonPlaceholderAddress source)
+        private static Address? MapAddress(JsonPlaceholderAddress? source)
         {
             //json da adres yoksa boş bırak
             if (source is null) return null;
@@ -178,11 +230,12 @@ namespace UserManagement.Infrastructure.Seeding
                 Street=source.Street,
                 Suite=source.Suite,
                 City=source.City,
-                ZipCode=source.Zipcode
+                ZipCode=source.Zipcode,
+                Geo=MapGeo(source.Geo)
             };
         }
 
-        private static Company? MapCompany(JsonPlaceholderCompany source)
+        private static Company? MapCompany(JsonPlaceholderCompany? source)
         {
             if (source is null) return null;
 
@@ -195,12 +248,25 @@ namespace UserManagement.Infrastructure.Seeding
 
         }
 
-    
 
+        // jsonplaceholder Lat/Lng'yi metin olarak gönderiyor ("-37.3159"); burada double'a çeviriyoruz
+        private static GeoLocation? MapGeo(JsonPlaceholderGeo? source) { 
 
+            //Geo bilgisi gelmediyse çevrilecek hiçbir şey yok
+            if (source is null) return null;
 
+            //lat ve lng'yi sayıya çevirmeye çalışıyoruz sonuçlar başarılıyla değerleri lat ve lng'ye yazıyoruz
+            // InvariantCulture: Türkçe bilgisayarda da "." ondalık ayırıcı sayılsın
+            if (!double.TryParse(source.Lat, NumberStyles.Float, CultureInfo.InvariantCulture, out var lat) ||
+                !double.TryParse(source.Lng, NumberStyles.Float, CultureInfo.InvariantCulture, out var lng))
+                return null;   // biri bile çevrilemezse Geo boş kalır, kullanıcı yine eklenir
 
+            // İkisi de sayıya çevrildi: GeoLocation nesnesini oluştur
+            return new GeoLocation { Latitude = lat, Longitude = lng };
         }
 
 
     }
+
+
+}

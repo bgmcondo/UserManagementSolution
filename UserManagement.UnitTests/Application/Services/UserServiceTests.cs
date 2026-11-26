@@ -37,7 +37,7 @@ namespace UserManagement.UnitTests.Application.Services
         private readonly Mock<IUserRepository> _userRepositoryMock = new();
         private readonly Mock<ICacheService> _cacheServiceMock = new();
         private readonly Mock<IValidationService> _validationServiceMock = new();
-
+        private readonly Mock<IJwtTokenService> _tokenServiceMock = new();
         private readonly Mock<INotificationService> _notificationServiceMock = new();
 
         // ---------- TEST EDİLEN SINIF ----------
@@ -55,7 +55,8 @@ namespace UserManagement.UnitTests.Application.Services
                 _userRepositoryMock.Object,
                 _cacheServiceMock.Object,
                 _validationServiceMock.Object,
-                _notificationServiceMock.Object);
+                _notificationServiceMock.Object,
+                _tokenServiceMock.Object                );
 
         }
 

@@ -1,8 +1,8 @@
 ﻿
-using MailKit;
+
 using MailKit.Net.Smtp;
 using MailKit.Security;
-using MassTransit.Configuration;
+
 using Microsoft.Extensions.Options;
 using MimeKit;
 using UserManagement.Application.Interfaces;

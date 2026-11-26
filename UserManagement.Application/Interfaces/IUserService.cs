@@ -29,11 +29,14 @@ namespace UserManagement.Application.Interfaces
         //Sonrasında cache temizlenir
         Task<UserResponseDto> CreateAsync(CreateUserRequestDto createUserRequestDto, CancellationToken ct);
 
+
+        // currentUserId: isteği yapan admin (token'dan). Başka bir admin'i güncellemesini engellemek için.
+
         //Kullanıcı profilini günceller.İki endpoint ortak kullanılır:
         //PUT /api/users/{id} Admin id URL'den
         //PUT /api/users/me kullanıcının kendisi,id token'dan
         //Bulunamazsa false döner
-        Task <UserResponseDto> UpdateAsync(Guid id, UpdateUserRequestDto request, CancellationToken ct);
+        Task<UserResponseDto> UpdateAsync(Guid id,Guid currentUserId ,UpdateUserRequestDto request, CancellationToken ct);
 
         // currentUserId: silme isteğini yapan kişi (token'dan). Kendini silmeyi engellemek için.
         Task DeleteAsync(Guid id,Guid currentUserId, CancellationToken ct);
@@ -41,7 +44,8 @@ namespace UserManagement.Application.Interfaces
         // Kullanıcının kendi kullanıcı adını değiştirir. userId token'dan gelir, istemciden değil.
         // Mevcut parola yanlışsa veya yeni ad başkasındaysa ValidationException fırlatır.
         // Başarılıysa cache temizlenir ve Admin'lere SignalR bildirimi gider.
-        Task  ChangeUserNameAsync(Guid userId, ChangeUserNameRequestDto request, CancellationToken ct);
+        // Başarılıysa yeni token döner: eski token (eski ad + eski stamp) artık geçersiz.
+        Task<LoginResponseDto> ChangeUserNameAsync(Guid userId, ChangeUserNameRequestDto request, CancellationToken ct);
 
         // Kullanıcının kendi parolasını değiştirir. userId token'dan gelir.
         // Mevcut parola yanlışsa ValidationException fırlatır.

@@ -1,7 +1,10 @@
 ﻿
+using MassTransit;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Logging;
 using UserManagement.Application.Common;
 using UserManagement.Application.DTOs;
+using UserManagement.Application.Events;
 using UserManagement.Application.Exceptions;
 using UserManagement.Application.Interfaces;
 using UserManagement.Application.Mappings;
@@ -25,22 +28,33 @@ namespace UserManagement.Application.Services
     public class UserService : IUserService
     {
         private const string DefaultRole = "User";
+
+        private const string AdminRole = "Admin";
         private readonly IUserRepository _userRepository;
         private readonly ICacheService _cache;
         private readonly IValidationService _validationService;
 
         private readonly INotificationService _notificationService;
 
+        private readonly IJwtTokenService _tokenService;
+
+        // Mesajı kuyruğa bırakmak için (MassTransit). Nereye gideceğini (RabbitMQ) Infrastructure bilir.
+        private readonly IPublishEndpoint _publishEndpoint;
+
+     
 
 
 
-        public UserService(IUserRepository userRepository, ICacheService cacheService, IValidationService validationService, INotificationService notificationService)                       // ← mevcutlar aynen kalsın
+
+        public UserService(IUserRepository userRepository, ICacheService cacheService, IValidationService validationService, INotificationService notificationService,IJwtTokenService tokenService, IPublishEndpoint publishEndpoint)                       // ← mevcutlar aynen kalsın
 
         {
             _userRepository = userRepository;
             _cache = cacheService;
+            _tokenService = tokenService;
             _validationService = validationService;
             _notificationService = notificationService;
+            _publishEndpoint = publishEndpoint;
 
         }
 
@@ -68,13 +82,14 @@ namespace UserManagement.Application.Services
             return user.ToResponseDto();
         }
 
+
+   
+
         public async Task<UserResponseDto> CreateAsync(CreateUserRequestDto createUserRequestDto, CancellationToken ct)
         {
             // Kurallara uymuyorsa ValidationException fırlatır, aşağısı HİÇ çalışmaz → middleware 400 döner
             await _validationService.ValidateAsync(createUserRequestDto, ct);
-            var existingUser = await _userRepository.GetByEmailAsync(createUserRequestDto.Email, ct);
-            if (existingUser is not null)
-                throw new ConflictException("Bu e-postaya sahip kullanıcı zaten var.");
+            // E-posta/kullanıcı adı benzersizliğini Identity kontrol ediyor (RequireUniqueEmail = true) → 409
 
             var user = new AppUser
             {
@@ -90,6 +105,11 @@ namespace UserManagement.Application.Services
 
             var result = await _userRepository.CreateAsync(user, createUserRequestDto.Password, DefaultRole, ct);
             ThrowIfFailed(result, "Kullanıcı oluşturulamadı");
+            // Hoş geldin e-postası için kuyruğa mesaj bırak.
+            // E-postanın gönderilmesini BEKLEMİYORUZ: UserCreatedConsumer arka planda gönderir,
+            // e-posta sunucusu yavaş/kapalıysa bile bu istek hemen döner.
+            await _publishEndpoint.Publish(
+                new UserCreatedEvent(user.Id, user.Email!, user.FullName, user.CreatedAt), ct);
             // Liste cache'leri artık eksik, hepsini temizliyoruz
             await _cache.RemoveByPrefixAsync(CacheKeys.UserListPrefix, ct);
             var response = user.ToResponseDto();
@@ -98,10 +118,12 @@ namespace UserManagement.Application.Services
 
         }
 
-        public async Task<UserResponseDto> UpdateAsync(Guid id, UpdateUserRequestDto updateUserRequestDto, CancellationToken ct)
+        public async Task<UserResponseDto> UpdateAsync(Guid id,Guid currentUserId ,UpdateUserRequestDto updateUserRequestDto, CancellationToken ct)
         {
             await _validationService.ValidateAsync(updateUserRequestDto, ct);
             var user = await GetUserOrThrowAsync(id, ct);
+
+            await EnsureCanManageAsync(user, currentUserId, ct);
 
             // Önce değerleri entity'ye aktar, sonra kaydet
             // E-posta gerçekten değiştiyse: yeni adres doğrulanmamış sayılır ve eski token'lar geçersiz olur.
@@ -112,7 +134,7 @@ namespace UserManagement.Application.Services
 
             if (emailChanged)
             {
-                user.EmailConfirmed = false;                     // yeni adres henüz doğrulanmadı
+      
                 //Securitystamp güvenlik bilgisi sürümü anlamına gelir.eposta değiştiğinde stamp de manuel olarak güncellenir ve eski tokenlar geçersiz olur
                 user.SecurityStamp = Guid.NewGuid().ToString();  
             }
@@ -135,7 +157,7 @@ namespace UserManagement.Application.Services
                 throw new ForbiddenException("Kendi hesabınızı silemezsiniz.");
 
             var user = await GetUserOrThrowAsync(id, ct);
-
+            await EnsureCanManageAsync(user, currentUserId, ct);
             var result = await _userRepository.DeleteAsync(user,ct);
 
             // Silme hatası istemcinin girdisinden kaynaklanmaz (genelde eşzamanlılık/DB hatası) → 500
@@ -145,7 +167,7 @@ namespace UserManagement.Application.Services
             await InvalidateUserCacheAsync(id, ct);
         }
 
-        public async Task ChangeUserNameAsync(Guid userId, ChangeUserNameRequestDto changeUserNameRequestDto, CancellationToken ct)
+        public async Task<LoginResponseDto> ChangeUserNameAsync(Guid userId, ChangeUserNameRequestDto changeUserNameRequestDto, CancellationToken ct)
         {
             await _validationService.ValidateAsync(changeUserNameRequestDto, ct);
             var user = await GetUserOrThrowAsync(userId, ct);
@@ -168,6 +190,14 @@ namespace UserManagement.Application.Services
                       oldUserName ?? String.Empty,
                       changeUserNameRequestDto.NewUserName,
                       DateTime.UtcNow), ct);
+
+            // SetUserNameAsync stamp'i yeniledi, eski token artık reddedilecek.
+            // Kullanıcı oturumdan düşmesin diye yeni ad + yeni stamp ile token üretip dönüyoruz.
+            var roles = await _userRepository.GetRolesAsync(user, ct);
+            var token = _tokenService.GenerateAccessToken(user.Id, user.Email!, user.UserName!, user.SecurityStamp!, roles);
+
+            return new LoginResponseDto(token.Token, token.ExpiresAt);
+
         }
 
         public async Task ChangePasswordAsync(Guid userId, ChangePasswordRequestDto changePasswordRequestDto, CancellationToken ct)
@@ -212,6 +242,19 @@ namespace UserManagement.Application.Services
             await _cache.RemoveAsync(CacheKeys.User(id), ct);
             await _cache.RemoveByPrefixAsync(CacheKeys.UserListPrefix, ct);
             await _cache.RemoveAsync(CacheKeys.SecurityStamp(id), ct);   // eski token'lar hemen reddedilsin
+        }
+
+
+        // Bir admin başka bir admin'in hesabına dokunamaz (güncelleme/silme).
+        // Kendi hesabı serbest. Hedef normal kullanıcıysa da serbest.
+        private async Task EnsureCanManageAsync(AppUser target, Guid currentUserId, CancellationToken ct)
+        {
+            if (target.Id == currentUserId)
+                return;
+
+            var roles = await _userRepository.GetRolesAsync(target, ct);
+            if (roles.Contains(AdminRole))
+                throw new ForbiddenException("Başka bir yöneticinin hesabında değişiklik yapamazsınız.");
         }
 
     }

@@ -1,8 +1,8 @@
 
 
 services:
-#“SQL Server ve Redis sağlıklı olmadan beni başlatma.”
-  usermanagement.api:
+  usermanagement.api:   # ---------- API ----------
+    # "SQL Server, Redis ve RabbitMQ sağlıklı olmadan beni başlatma."
     image: ${DOCKER_REGISTRY-}usermanagementapi
     build:
       context: .
@@ -12,13 +12,20 @@ services:
       # Container içinde "localhost" kendisi demek; diğer container'lara SERVİS ADIYLA ulaşılır.
       - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=UserManagementDb;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;MultipleActiveResultSets=True
       - ConnectionStrings__Redis=redis:6379
+      - RabbitMq__Host=rabbitmq
+      - RabbitMq__Username=${RABBITMQ_USER}
+      - RabbitMq__Password=${RABBITMQ_PASSWORD}
+      - Smtp__Host=mailpit
+      - Smtp__Port=1025
     depends_on:
       sqlserver:
         condition: service_healthy   # SQL Server gerçekten hazır olana kadar API başlamasın
       redis:
         condition: service_healthy
-   # ---------- SQL Server ----------
-  sqlserver:
+      rabbitmq:
+        condition: service_healthy
+
+  sqlserver:   # ---------- SQL Server ----------
     image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
       - ACCEPT_EULA=Y                     # Microsoft lisansını kabul et (zorunlu)
@@ -33,10 +40,8 @@ services:
       timeout: 5s       # test 5 sn içinde bitmezse durdurulur ve o deneme "başarısız" sayılır (donmuş servis böyle anlaşılır)
       retries: 10       # art arda 10 başarısız test → "unhealthy"; tek bir yavaş cevap yüzünden hemen bozuk sayılmaz
       start_period: 20s # açılıştaki ilk 20 sn içindeki başarısızlıklar retries'a sayılmaz (SQL Server yavaş açılır)
- 
 
-        # ---------- Redis ----------
-  redis:
+  redis:   # ---------- Redis ----------
     image: redis:7
     # ports YOK: sadece API ulaşıyor, dışarı açmaya gerek yok.
     # (Açsaydık 1. aşamadaki "redis" container'ıyla 6379 portu çakışırdı.)
@@ -47,6 +52,33 @@ services:
       retries: 5                          # art arda 5 başarısız test → "unhealthy"; tek bir yavaş cevap yüzünden hemen bozuk sayılmaz
       # start_period yok: Redis neredeyse anında açıldığı için açılışa ek süre tanımaya gerek yok
 
+  rabbitmq:   # ---------- RabbitMQ ----------
+    image: rabbitmq:4-management   # "management": tarayıcıdan kuyrukları görebileceğin arayüz dahil
+    hostname: rabbitmq             # RabbitMQ veriyi hostname'e göre saklar; sabit olmazsa volume'daki kuyruklar kaybolur
+    environment:
+      # guest kullanıcısı sadece localhost'tan bağlanabilir; API başka container'da olduğu için kendi kullanıcımızı tanımlıyoruz.
+      # Not: sadece İLK açılışta (rabbitmqdata volume'u boşken) uygulanır.
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
+    ports:
+      - "15672:15672"   # Yönetim arayüzü: http://localhost:15672 (5672 dışarı açılmıyor, sadece API kullanıyor)
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq   # Container silinse bile kuyruktaki mesajlar kaybolmasın
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]   # RabbitMQ ayakta mı?
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s   # RabbitMQ açılırken birkaç saniye sürer
+
+  mailpit:   # ---------- Mailpit (sahte SMTP sunucusu, sadece geliştirme için) ----------
+    # Gönderilen e-postalar gerçek kişilere GİTMEZ, burada yakalanır: http://localhost:8025
+    # API buna depends_on ile bağlı değil: e-posta sunucusu kapalıysa bile API açılır, mesaj kuyrukta bekler.
+    image: axllent/mailpit
+    ports:
+      - "8025:8025"   # E-postaları gördüğün arayüz (SMTP 1025 dışarı açılmıyor)
+
 volumes:
   sqldata:
+  rabbitmqdata:
 

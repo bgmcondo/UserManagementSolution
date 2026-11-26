@@ -24,12 +24,13 @@ namespace UserManagement.Infrastructure.Seeding.Models
 
         //telefon 
         public string Phone {  get; init; } = string.Empty;
-        public string Website { get; internal set; }
+        public string Website { get; init; } = string.Empty;
 
-        public JsonPlaceholderAddress Address { get; init; }
 
-        public JsonPlaceholderCompany Company { get; init; }
+        public JsonPlaceholderAddress? Address { get; init; }
 
-        public JsonPlaceholderGeo Geo {  get; init; }
+        public JsonPlaceholderCompany? Company { get; init; }
+
+    
     }
 }

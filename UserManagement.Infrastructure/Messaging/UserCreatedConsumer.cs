@@ -1,8 +1,6 @@
-﻿using MassTransit;
-using System;
-using System.Collections.Generic;
+﻿
+using MassTransit;
 using System.Net;
-using System.Text;
 using UserManagement.Application.Events;
 using UserManagement.Application.Interfaces;
 

@@ -28,6 +28,12 @@ namespace UserManagement.Infrastructure.Persistence
                 e.Property(u => u.FullName).IsRequired().HasMaxLength(100);
 
                 e.Property(u => u.Email).IsRequired().HasMaxLength(256);
+                // Identity'nin EmailIndex'i varsayılan olarak TEKİL DEĞİL; uygulama "var mı?" diye sorup sonra kaydediyor.
+                // Aynı anda iki istek gelirse ikisi de geçebilir. Tekil yapınca veritabanı ikinciyi kesin reddeder.
+                // Aynı adı ("EmailIndex") veriyoruz ki Identity'nin indeksini DEĞİŞTİRSİN, yanına ikinci bir indeks açmasın.
+                e.HasIndex(u => u.NormalizedEmail)
+                    .HasDatabaseName("EmailIndex")
+                    .IsUnique();
                 e.Property(u => u.UserName).IsRequired();
                 e.Property(u=>u.Website).HasMaxLength(200);  
                 e.Property(u=> u.PhoneNumber).HasMaxLength(30);

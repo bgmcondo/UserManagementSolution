@@ -40,9 +40,13 @@ namespace UserManagement.Application.Services
             // 1) Boş/geçersiz girdi → 400 (veritabanına hiç gitmeden)
             await _validationService.ValidateAsync(request, ct);
 
-            //kullanıcıyı eposta adresiyle buluyoruz
-            var user = await _userRepository.GetByEmailAsync(request.UserNameOrEmail, ct) ?? await
-                _userRepository.GetByUserNameAsync(request.UserNameOrEmail,ct);
+        
+
+            // Kullanıcı adında '@' olamaz (UserNameRules), e-postada olmak zorunda.
+            // '@' varsa sadece e-postaya, yoksa sadece kullanıcı adına bakıyoruz: her girişte TEK sorgu.
+            var user = request.UserNameOrEmail.Contains('@')
+                ? await _userRepository.GetByEmailAsync(request.UserNameOrEmail, ct)
+                : await _userRepository.GetByUserNameAsync(request.UserNameOrEmail, ct);
             //kullanıcı veya şifre yoksa null dönüyoruz
             //    İkisine aynı cevabı veriyoruz; farklı mesaj verirsek saldırgan
             //    hangi e-postaların sistemde kayıtlı olduğunu öğrenebilir.
@@ -63,7 +67,7 @@ namespace UserManagement.Application.Services
                 throw new ForbiddenException("Hesabınıza rol atanmamış. Yöneticiyle iletişime geçin.");
             }
             // 4) Token'ları üret (bellekte hesaplama, await gerekmez)
-            var accessToken = _tokenService.GenerateAccessToken(user.Id, user.Email!,user.SecurityStamp! ,roles);
+            var accessToken = _tokenService.GenerateAccessToken(user.Id, user.Email!,user.UserName!,user.SecurityStamp! ,roles);
 
             return new LoginResponseDto(accessToken.Token, accessToken.ExpiresAt);
         }

@@ -17,6 +17,11 @@ namespace UserManagement.Infrastructure.Seeding
         // Geliştirmede true, canlı ortamda false yapılır.
         public bool Enabled { get; init; } = true;
 
+
+        // jsonplaceholder örnek kullanıcıları eklensin mi?
+        // Varsayılan KAPALI: sadece appsettings.Development.json'da true. Canlı ortamda ortak parolalı hesap olmasın.
+        public bool SampleUsersEnabled { get; init; } = false;
+
         // Kullanıcıların çekileceği adres
         public string UsersUrl { get; init; } = "https://jsonplaceholder.typicode.com/users";
 

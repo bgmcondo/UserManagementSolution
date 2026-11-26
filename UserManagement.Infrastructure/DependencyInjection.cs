@@ -1,4 +1,4 @@
-﻿using MassTransit.Configuration;
+﻿using MassTransit;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -8,7 +8,8 @@ using StackExchange.Redis;
 using UserManagement.Application.Interfaces;
 using UserManagement.Application.Options;
 using UserManagement.Domain.Entities;
-using UserManagement.Infrastructure.Caching;
+using UserManagement.Infrastructure.Email;
+using UserManagement.Infrastructure.Messaging;
 using UserManagement.Infrastructure.Persistence;
 using UserManagement.Infrastructure.Repositories;
 using UserManagement.Infrastructure.Security;
@@ -106,12 +107,48 @@ namespace UserManagement.Infrastructure
             services.Configure<SeedOptions>(configuration.GetSection(SeedOptions.SectionName));
 
             // DataSeeder dış API'ye (jsonplaceholder) istek attığı için HttpClient ile kaydediliyor
-            services.AddHttpClient<DataSeeder>();
+            // Site cevap vermezse açılış 100 sn (varsayılan) beklemesin, 10 sn sonra vazgeçsin
+            services.AddHttpClient<DataSeeder>(client => client.Timeout = TimeSpan.FromSeconds(10));
 
 
 
 
             services.AddScoped<ICacheService, RedisCacheService>();
+
+            // ---------- E-posta ----------
+            // UserCreatedConsumer hoş geldin e-postasını bununla gönderir.
+            services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
+            services.AddScoped<IEmailSender, SmtpEmailSender>();
+
+            // ---------- RabbitMQ (MassTransit) ----------
+            services.Configure<RabbitMqOptions>(configuration.GetSection(RabbitMqOptions.SectionName));
+
+            services.AddMassTransit(x =>
+            {
+                // Kuyruk adları okunaklı olsun: UserCreatedConsumer → "user-created"
+                x.SetKebabCaseEndpointNameFormatter();
+
+                // UserCreatedEvent gelince UserCreatedConsumer.Consume çalışsın
+                x.AddConsumer<UserCreatedConsumer>();
+
+                x.UsingRabbitMq((context, cfg) =>
+                {
+                    var rabbit = context.GetRequiredService<IOptions<RabbitMqOptions>>().Value;
+
+                    cfg.Host(rabbit.Host, rabbit.VirtualHost, h =>
+                    {
+                        h.Username(rabbit.Username);
+                        h.Password(rabbit.Password);
+                    });
+
+                    // E-posta sunucusu geçici olarak kapalıysa: 5 sn arayla 3 kez daha dene.
+                    // Hepsi başarısız olursa mesaj "user-created_error" kuyruğuna düşer, kaybolmaz.
+                    cfg.UseMessageRetry(r => r.Interval(3, TimeSpan.FromSeconds(5)));
+
+                    // Kayıtlı consumer'lar için kuyrukları RabbitMQ'da otomatik oluşturur
+                    cfg.ConfigureEndpoints(context);
+                });
+            });
 
             return services;
         }

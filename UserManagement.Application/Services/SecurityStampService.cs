@@ -9,6 +9,10 @@ namespace UserManagement.Application.Services
 
         private readonly ICacheService _cacheService;
         private readonly IUserRepository _userRepository;
+
+        // Stamp güvenlik bilgisi: önbellekte KISA tutuyoruz.
+        // Redis bir silme sırasında çökerse, eski stamp en fazla bu süre kadar önbellekte kalır.
+        private static readonly TimeSpan StampCacheDuration = TimeSpan.FromMinutes(2);
         public SecurityStampService(ICacheService cacheService, IUserRepository userRepository) {
 
             _cacheService = cacheService;
@@ -23,7 +27,7 @@ namespace UserManagement.Application.Services
             //kullanıcı silinmişse de null döner null da cachelenemez
             return
             _cacheService.GetOrSetAsync(CacheKeys.SecurityStamp(userId),
-                async () => (await _userRepository.GetByIdAsync(userId, ct))?.SecurityStamp, cancellationToken: ct);
+                async () => (await _userRepository.GetByIdAsync(userId, ct))?.SecurityStamp,absoluteExpiration:StampCacheDuration, cancellationToken: ct);
 
         }
     }

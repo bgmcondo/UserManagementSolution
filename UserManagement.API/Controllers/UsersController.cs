@@ -55,7 +55,7 @@ namespace UserManagement.API.Controllers
         [Authorize(Roles = AdminRole)]
         public async Task<IActionResult> Update(Guid id, UpdateUserRequestDto updateUserRequestDto, CancellationToken ct)
         {
-            var result = await _userService.UpdateAsync(id, updateUserRequestDto, ct);
+            var result = await _userService.UpdateAsync(id,CurrentUserId, updateUserRequestDto, ct);
             return Ok(result);
 
         }
@@ -88,8 +88,8 @@ namespace UserManagement.API.Controllers
 
         public async Task<IActionResult> ChangeUserName(ChangeUserNameRequestDto changeUserNameRequestDto, CancellationToken ct)
         {
-            await _userService.ChangeUserNameAsync(CurrentUserId, changeUserNameRequestDto, ct);
-            return NoContent();   // 204: Güncellendi, dönecek veri yok
+            var result = await _userService.ChangeUserNameAsync(CurrentUserId, changeUserNameRequestDto, ct);
+            return Ok(result);  //yeni token böylece dönüyor
 
         }
         [HttpPatch("me/password")]
